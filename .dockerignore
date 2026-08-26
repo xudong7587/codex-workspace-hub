@@ -1,0 +1,15 @@
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+.codex-home/
+.hub-data/
+data/
+node_modules/
+coverage/
+test/
+docs/
+README.md
+*.log
+npm-debug.log*

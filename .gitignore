@@ -1,0 +1,7 @@
+.env
+.codex-home/
+.hub-data/
+data/
+node_modules/
+coverage/
+*.log

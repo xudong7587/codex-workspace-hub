@@ -1,0 +1,69 @@
+name: vwatch-quota-hub
+
+services:
+  quota-hub:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: vwatch-quota-hub:local
+    restart: unless-stopped
+    init: true
+
+    environment:
+      HOST: 0.0.0.0
+      PORT: 17321
+      TOKEN_MONITOR_SECRET: ${TOKEN_MONITOR_SECRET:?请先在 .env 中设置 TOKEN_MONITOR_SECRET}
+      HUB_ADMIN_TOKEN: ${HUB_ADMIN_TOKEN:?请先在 .env 中设置 HUB_ADMIN_TOKEN}
+      POLL_INTERVAL_SECONDS: ${POLL_INTERVAL_SECONDS:-300}
+      STALE_AFTER_SECONDS: ${STALE_AFTER_SECONDS:-900}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      TZ: ${TZ:-Asia/Shanghai}
+
+    # Only the NAS host can reach the plain-HTTP listener. Terminate public HTTPS
+    # with Caddy, Nginx, or the NAS reverse proxy on this same host.
+    ports:
+      - "127.0.0.1:${HUB_HOST_PORT:-17321}:17321"
+
+    volumes:
+      - hub-data:/data
+
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16777216,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: ${PIDS_LIMIT:-64}
+    mem_limit: ${MEM_LIMIT:-128m}
+    cpus: ${CPU_LIMIT:-0.50}
+    # A full refresh can spend up to 30s starting/initializing Codex, 15s on
+    # its quota requests, about 4s stopping the child, and another 15s on the
+    # optional OpenRouter request. Keep a small margin for HTTP shutdown.
+    stop_grace_period: 75s
+
+    healthcheck:
+      # Bash built-ins only: avoid starting another Node VM every 30 seconds and
+      # never attach either Hub secret to the liveness request.
+      test:
+        - CMD
+        - /bin/bash
+        - -ec
+        - >-
+          exec 3<>/dev/tcp/127.0.0.1/17321;
+          printf 'GET /livez HTTP/1.0\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3;
+          IFS=' ' read -r _ status _ <&3;
+          test "$$status" = 200
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+volumes:
+  hub-data:
