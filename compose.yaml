@@ -1,9 +1,6 @@
-name: vwatch-quota-hub
-
 services:
   quota-hub:
     image: ghcr.io/xudong7587/vwatch-quota-hub:latest
-    pull_policy: always
     restart: unless-stopped
     init: true
 
@@ -26,6 +23,10 @@ services:
       - /tmp:rw,noexec,nosuid,nodev,size=16777216,mode=1777
     cap_drop:
       - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
     security_opt:
       - no-new-privileges:true
     pids_limit: 64
@@ -36,13 +37,13 @@ services:
     healthcheck:
       test:
         - CMD
-        - /bin/bash
-        - -ec
-        - >-
-          exec 3<>/dev/tcp/127.0.0.1/17321;
-          printf 'GET /livez HTTP/1.0\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3;
-          IFS=' ' read -r _ status _ <&3;
-          test "$$status" = 200
+        - wget
+        - -q
+        - -T
+        - "5"
+        - -O
+        - /dev/null
+        - http://127.0.0.1:17321/livez
       interval: 30s
       timeout: 5s
       retries: 3

@@ -27,6 +27,71 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Build smoke-test image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          tags: vwatch-quota-hub:smoke
+          provenance: false
+          sbom: false
+          cache-from: type=gha,scope=container
+          cache-to: type=gha,mode=max,scope=container
+
+      - name: Smoke test with NAS-style data permissions
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          data_dir="$RUNNER_TEMP/vwatch-smoke-data"
+          mkdir -p "$data_dir"
+          sudo chown root:root "$data_dir"
+          chmod 0755 "$data_dir"
+
+          cid="$(docker run -d \
+            --name vwatch-quota-hub-smoke \
+            --init \
+            --memory 128m \
+            --cpus 0.50 \
+            --pids-limit 64 \
+            --read-only \
+            --tmpfs /tmp:rw,noexec,nosuid,nodev,size=16777216,mode=1777 \
+            --cap-drop ALL \
+            --cap-add CHOWN \
+            --cap-add SETGID \
+            --cap-add SETUID \
+            --security-opt no-new-privileges:true \
+            -v "$data_dir:/data" \
+            -p 127.0.0.1:17321:17321 \
+            vwatch-quota-hub:smoke)"
+
+          cleanup() {
+            docker logs "$cid" || true
+            docker rm -f "$cid" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:17321/livez >/dev/null; then
+              break
+            fi
+            if [ "$(docker inspect -f '{{.State.Running}}' "$cid")" != "true" ]; then
+              echo "Container exited before becoming healthy" >&2
+              exit 1
+            fi
+            sleep 1
+          done
+
+          curl -fsS http://127.0.0.1:17321/livez >/dev/null
+          curl -fsS http://127.0.0.1:17321/admin/api/setup | grep -q '"setupRequired":true'
+          test "$(docker exec "$cid" awk '/^Uid:/ { print $2 }' /proc/1/status)" = "1000"
+          test "$(stat -c '%u' "$data_dir/credentials.json")" = "1000"
+          docker exec "$cid" codex --version
+          sleep 15
+          test "$(docker inspect -f '{{.State.Running}}' "$cid")" = "true"
+          docker stats --no-stream "$cid"
+          docker image inspect vwatch-quota-hub:smoke --format 'IMAGE_BYTES={{.Size}}'
+
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
@@ -50,7 +115,9 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
+          provenance: false
+          sbom: false
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=container
+          cache-to: type=gha,mode=max,scope=container

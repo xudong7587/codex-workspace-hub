@@ -47,8 +47,10 @@ http://127.0.0.1:17321
 
 ```bash
 docker compose pull
-docker compose up -d
+docker compose up -d --force-recreate
 docker compose logs -f quota-hub
 ```
 
 配置、Codex 登录状态和自动生成的 Secret 都保存在 `hub-data` 数据卷中，更新或重启容器不会丢失。
+
+旧版若出现 `/data/credentials.json` 的 `EACCES`，执行上面的更新命令即可；新版会在启动时修正数据卷权限，然后降权运行。
