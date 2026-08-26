@@ -2,7 +2,7 @@
 
 import { pathToFileURL } from "node:url";
 
-import { CodexAppServerClient } from "./codex-app-server.js";
+import { CodexDirectClient } from "./codex-direct-client.js";
 import { loadConfig, validateServeConfig } from "./config.js";
 import { CredentialStore } from "./credential-store.js";
 import {
@@ -37,12 +37,11 @@ export function createCodexChildEnv(config, baseEnv = process.env, extraEnv = {}
 }
 
 function createClient(config, logger, options = {}) {
-  return new CodexAppServerClient({
-    command: config.codexBin,
-    env: createCodexChildEnv(config, process.env, options.env || {}),
+  return new CodexDirectClient({
+    codexHome: config.codexHome,
     requestTimeoutMs: config.requestTimeoutMs,
-    startTimeoutMs: config.startTimeoutMs,
-    stopTimeoutMs: config.stopTimeoutMs,
+    loginTimeoutMs: config.loginTimeoutMs,
+    fetchImpl: options.fetchImpl,
     logger,
     ...options.clientOptions,
   });

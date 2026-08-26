@@ -6,7 +6,7 @@
 手表 ↔ 手机额度桥接 ↔ HTTPS VWatch Quota Hub ↔ Codex
 ```
 
-Codex 已支持完整额度链路；DeepSeek 继续由手机端处理。默认每 5 分钟刷新，服务常驻内存目标为几十 MiB。
+Codex 已支持完整额度链路；DeepSeek 继续由手机端处理。Hub 直接完成 Codex 登录和额度查询，不再内置庞大的 Codex CLI。默认每 5 分钟刷新，镜像和常驻内存都控制在几十 MiB。
 
 ## 部署
 

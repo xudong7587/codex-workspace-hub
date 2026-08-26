@@ -1,0 +1,177 @@
+import assert from "node:assert/strict";
+import { once } from "node:events";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import test from "node:test";
+
+import {
+  CODEX_OAUTH_CLIENT_ID,
+  CodexDirectClient,
+  mapCodexUsageResponse,
+} from "../src/codex-direct-client.js";
+
+function jwt(payload) {
+  const encode = (value) => Buffer.from(JSON.stringify(value)).toString("base64url");
+  return `${encode({ alg: "none", typ: "JWT" })}.${encode(payload)}.sig`;
+}
+
+function jsonResponse(payload, status = 200) {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+test("mapCodexUsageResponse converts the official usage endpoint shape", () => {
+  const mapped = mapCodexUsageResponse({
+    plan_type: "plus",
+    rate_limit: {
+      primary_window: {
+        used_percent: 24,
+        limit_window_seconds: 18_000,
+        reset_at: 1_800_000_000,
+      },
+      secondary_window: {
+        used_percent: 61,
+        limit_window_seconds: 604_800,
+        reset_after_seconds: 60,
+      },
+    },
+    rate_limit_reached_type: null,
+  }, 1_700_000_000_000);
+
+  const codex = mapped.rateLimitsByLimitId.codex;
+  assert.equal(codex.planType, "plus");
+  assert.deepEqual(codex.primary, {
+    usedPercent: 24,
+    windowDurationMins: 300,
+    resetsAt: 1_800_000_000,
+  });
+  assert.deepEqual(codex.secondary, {
+    usedPercent: 61,
+    windowDurationMins: 10_080,
+    resetsAt: 1_700_000_060,
+  });
+});
+
+test("CodexDirectClient completes device login and reads quota without a Codex binary", async () => {
+  const codexHome = await mkdtemp(join(tmpdir(), "vwatch-codex-direct-"));
+  const now = 1_800_000_000_000;
+  const idToken = jwt({
+    exp: 1_900_000_000,
+    "https://api.openai.com/auth": {
+      chatgpt_account_id: "account-123",
+      chatgpt_plan_type: "plus",
+    },
+  });
+  const accessToken = jwt({ exp: 1_900_000_000 });
+  const calls = [];
+  const fetchImpl = async (url, init = {}) => {
+    calls.push({ url: String(url), init });
+    if (String(url).endsWith("/api/accounts/deviceauth/usercode")) {
+      assert.deepEqual(JSON.parse(init.body), { client_id: CODEX_OAUTH_CLIENT_ID });
+      return jsonResponse({
+        device_auth_id: "device-auth-1",
+        user_code: "ABCD-1234",
+        interval: "1",
+      });
+    }
+    if (String(url).endsWith("/api/accounts/deviceauth/token")) {
+      return jsonResponse({
+        authorization_code: "authorization-code",
+        code_challenge: "challenge",
+        code_verifier: "verifier",
+      });
+    }
+    if (String(url).endsWith("/oauth/token")) {
+      assert.match(init.body, /grant_type=authorization_code/);
+      assert.match(init.body, /code_verifier=verifier/);
+      return jsonResponse({
+        id_token: idToken,
+        access_token: accessToken,
+        refresh_token: "refresh-token",
+      });
+    }
+    if (String(url).endsWith("/backend-api/codex/usage")) {
+      assert.equal(init.headers.Authorization, `Bearer ${accessToken}`);
+      assert.equal(init.headers["ChatGPT-Account-Id"], "account-123");
+      return jsonResponse({
+        plan_type: "plus",
+        rate_limit: {
+          primary_window: { used_percent: 12, limit_window_seconds: 18_000, reset_at: 1_800_000_100 },
+          secondary_window: { used_percent: 34, limit_window_seconds: 604_800, reset_at: 1_800_000_200 },
+        },
+      });
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  };
+  const client = new CodexDirectClient({ codexHome, fetchImpl, now: () => now });
+  await client.start();
+  const completedPromise = once(client, "account/login/completed");
+  const challenge = await client.request("account/login/start", { type: "chatgptDeviceCode" });
+  assert.equal(challenge.verificationUrl, "https://auth.openai.com/codex/device");
+  assert.equal(challenge.userCode, "ABCD-1234");
+  const [completed] = await completedPromise;
+  assert.equal(completed.loginId, challenge.loginId);
+  assert.equal(completed.success, true);
+
+  const account = await client.request("account/read", { refreshToken: false });
+  assert.deepEqual(account, {
+    account: { type: "chatgpt", planType: "plus", accountId: "account-123" },
+  });
+  const limits = await client.request("account/rateLimits/read");
+  assert.equal(limits.rateLimitsByLimitId.codex.primary.usedPercent, 12);
+  assert.equal(limits.rateLimitsByLimitId.codex.secondary.usedPercent, 34);
+
+  const stored = JSON.parse(await readFile(join(codexHome, "auth.json"), "utf8"));
+  assert.equal(stored.tokens.account_id, "account-123");
+  assert.equal(stored.tokens.refresh_token, "refresh-token");
+  assert.equal(calls.length, 4);
+  await client.stop();
+});
+
+test("CodexDirectClient refreshes an expiring access token before quota polling", async () => {
+  const codexHome = await mkdtemp(join(tmpdir(), "vwatch-codex-refresh-"));
+  const now = 1_800_000_000_000;
+  const idToken = jwt({
+    "https://api.openai.com/auth": { chatgpt_account_id: "account-refresh" },
+  });
+  await writeFile(join(codexHome, "auth.json"), JSON.stringify({
+    auth_mode: "chatgpt",
+    tokens: {
+      id_token: idToken,
+      access_token: jwt({ exp: 1_799_999_999 }),
+      refresh_token: "old-refresh",
+      account_id: "account-refresh",
+    },
+  }));
+
+  const fetchImpl = async (url, init = {}) => {
+    if (String(url).endsWith("/oauth/token")) {
+      assert.deepEqual(JSON.parse(init.body), {
+        client_id: CODEX_OAUTH_CLIENT_ID,
+        grant_type: "refresh_token",
+        refresh_token: "old-refresh",
+      });
+      return jsonResponse({ access_token: "fresh-access", refresh_token: "fresh-refresh" });
+    }
+    if (String(url).endsWith("/backend-api/codex/usage")) {
+      assert.equal(init.headers.Authorization, "Bearer fresh-access");
+      return jsonResponse({
+        rate_limit: {
+          primary_window: { used_percent: 7, limit_window_seconds: 18_000, reset_at: 1_800_000_100 },
+        },
+      });
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  };
+  const client = new CodexDirectClient({ codexHome, fetchImpl, now: () => now });
+  await client.start();
+  const limits = await client.request("account/rateLimits/read");
+  assert.equal(limits.rateLimitsByLimitId.codex.primary.usedPercent, 7);
+  const stored = JSON.parse(await readFile(join(codexHome, "auth.json"), "utf8"));
+  assert.equal(stored.tokens.access_token, "fresh-access");
+  assert.equal(stored.tokens.refresh_token, "fresh-refresh");
+  await client.stop();
+});
