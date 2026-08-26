@@ -13,10 +13,10 @@ Codex 已支持完整额度链路；DeepSeek 继续由手机端处理。默认�
 下载仓库里的 [`compose.yaml`](compose.yaml)，放到 NAS 的任意空目录，然后运行：
 
 ```bash
-docker compose up -d --build
+docker compose up -d
 ```
 
-不需要 `.env`，也不需要手工生成任何 Key。Compose 会直接从 GitHub 拉取代码并构建镜像。
+不需要 `.env`，也不需要手工生成任何 Key。Compose 会直接拉取 GitHub Container Registry 中公开的 amd64/arm64 镜像。
 
 浏览器打开：
 
@@ -46,7 +46,8 @@ http://127.0.0.1:17321
 ## 更新与查看日志
 
 ```bash
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 docker compose logs -f quota-hub
 ```
 

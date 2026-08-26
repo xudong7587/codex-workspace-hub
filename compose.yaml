@@ -2,9 +2,8 @@ name: vwatch-quota-hub
 
 services:
   quota-hub:
-    build:
-      context: https://github.com/xudong7587/vwatch-quota-hub.git#main
-    image: vwatch-quota-hub:local
+    image: ghcr.io/xudong7587/vwatch-quota-hub:latest
+    pull_policy: always
     restart: unless-stopped
     init: true
 
