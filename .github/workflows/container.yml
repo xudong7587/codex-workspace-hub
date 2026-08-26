@@ -58,6 +58,8 @@ jobs:
             --cap-add SETGID \
             --cap-add SETUID \
             --security-opt no-new-privileges:true \
+            -e PUID=1000 \
+            -e PGID=10 \
             -v "$data_dir:/data" \
             -p 127.0.0.1:17321:17321 \
             vwatch-quota-hub:smoke)"
@@ -85,7 +87,9 @@ jobs:
           node_pid="${node_pid%% *}"
           test -n "$node_pid"
           test "$(docker exec "$cid" awk '/^Uid:/ { print $2 }' "/proc/$node_pid/status")" = "1000"
+          test "$(docker exec "$cid" awk '/^Gid:/ { print $2 }' "/proc/$node_pid/status")" = "10"
           test "$(stat -c '%u' "$data_dir/credentials.json")" = "1000"
+          test "$(stat -c '%g' "$data_dir/credentials.json")" = "10"
           docker exec "$cid" codex --version
           sleep 15
           test "$(docker inspect -f '{{.State.Running}}' "$cid")" = "true"

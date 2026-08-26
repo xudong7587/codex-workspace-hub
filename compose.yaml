@@ -11,6 +11,8 @@ services:
       STALE_AFTER_SECONDS: 900
       LOG_LEVEL: info
       TZ: Asia/Shanghai
+      PUID: "1000"
+      PGID: "10"
 
     ports:
       - "17321:17321"

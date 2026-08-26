@@ -18,6 +18,8 @@ docker compose up -d
 
 不需要 `.env`，也不需要手工生成任何 Key。Compose 会直接拉取 GitHub Container Registry 中公开的 amd64 镜像。
 
+Compose 已按绿联 NAS 设置 `PUID=1000`、`PGID=10`。
+
 浏览器打开：
 
 ```text

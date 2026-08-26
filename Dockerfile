@@ -5,19 +5,16 @@ ENV NPM_CONFIG_AUDIT=false \
     NPM_CONFIG_UPDATE_NOTIFIER=false
 
 # Codex ships one large static binary plus several interactive CLI helpers.
-# This Hub only uses `codex app-server` for account quota calls, so keep the
-# main binary and remove code-mode, shell, search, and sandbox helpers.
+# This Hub only uses the x86-64 native binary's `app-server` command. Strip it
+# in the builder and copy that single file into the runtime image.
 RUN apk add --no-cache binutils \
     && npm install --global --omit=dev --no-audit --no-fund @openai/codex@0.149.1 \
-    && find /usr/local/lib/node_modules/@openai/codex -type f -path '*/vendor/*/bin/codex' \
-       -exec strip --strip-unneeded {} + \
-    && find /usr/local/lib/node_modules/@openai/codex -type f \( \
-         -name codex-code-mode-host \
-         -o -path '*/codex-path/rg' \
-         -o -path '*/codex-resources/bwrap' \
-         -o -path '*/codex-resources/zsh/bin/zsh' \
-       \) -delete \
-    && codex --version \
+    && native_codex="$(find /usr/local/lib/node_modules/@openai/codex \
+         -type f -path '*/vendor/x86_64-unknown-linux-musl/bin/codex' -print -quit)" \
+    && test -n "$native_codex" \
+    && strip --strip-unneeded "$native_codex" \
+    && install -m 0755 "$native_codex" /opt/codex \
+    && /opt/codex --version \
     && rm -rf /root/.npm
 
 FROM alpine:3.21
@@ -27,14 +24,11 @@ LABEL org.opencontainers.image.title="VWatch Quota Hub" \
       org.opencontainers.image.source="https://github.com/xudong7587/vwatch-quota-hub"
 
 RUN apk add --no-cache ca-certificates libstdc++ su-exec tzdata \
-    && addgroup -g 1000 -S node \
-    && adduser -u 1000 -S -D -H -G node node \
     && mkdir -p /app /data/providers/codex \
-    && chown -R node:node /app /data
+    && chown -R 1000:10 /app /data
 
 COPY --from=codex-builder /usr/local/bin/node /usr/local/bin/node
-COPY --from=codex-builder /usr/local/bin/codex /usr/local/bin/codex
-COPY --from=codex-builder /usr/local/lib/node_modules/@openai/codex /usr/local/lib/node_modules/@openai/codex
+COPY --from=codex-builder /opt/codex /usr/local/bin/codex
 
 ENV NODE_ENV=production \
     NODE_OPTIONS="--max-old-space-size=32 --max-semi-space-size=2" \
@@ -45,9 +39,9 @@ ENV NODE_ENV=production \
 
 WORKDIR /app
 
-COPY --chown=node:node package.json ./
-COPY --chown=node:node src ./src
-COPY --chown=node:node public ./public
+COPY --chown=1000:10 package.json ./
+COPY --chown=1000:10 src ./src
+COPY --chown=1000:10 public ./public
 COPY docker-entrypoint.sh /usr/local/bin/vwatch-entrypoint
 
 RUN chmod 0755 /usr/local/bin/vwatch-entrypoint
