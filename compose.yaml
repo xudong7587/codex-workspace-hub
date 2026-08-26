@@ -1,6 +1,6 @@
 services:
   quota-hub:
-    image: ghcr.io/xudong7587/vwatch-quota-hub:latest
+    image: ghcr.io/xudong7587/vwatch-quota-hub:stable
     restart: unless-stopped
     init: true
 
