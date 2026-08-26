@@ -1,6 +1,10 @@
+import { randomBytes } from "node:crypto";
+
 import { authenticateAdminRequest } from "./auth.js";
 
 const MAX_BODY_BYTES = 32 * 1_024;
+const ADMIN_SESSION_TTL_MS = 12 * 60 * 60_000;
+const MAX_ADMIN_SESSIONS = 64;
 
 class AdminApiError extends Error {
   constructor(message, statusCode = 400, code = "invalid_request", headers = {}) {
@@ -54,6 +58,34 @@ function requestHeader(request, name) {
   return value ?? null;
 }
 
+function bearerToken(request) {
+  const authorization = requestHeader(request, "authorization");
+  if (typeof authorization !== "string") return "";
+  const match = /^Bearer[ \t]+([^\s]+)$/i.exec(authorization.trim());
+  return match ? match[1] : "";
+}
+
+function privateSetupRequest(request) {
+  if (
+    requestHeader(request, "forwarded")
+    || requestHeader(request, "x-forwarded-for")
+    || requestHeader(request, "x-real-ip")
+  ) {
+    return false;
+  }
+  const raw = String(request?.socket?.remoteAddress || "").toLowerCase();
+  const address = raw.startsWith("::ffff:") ? raw.slice(7) : raw;
+  if (address === "::1" || address === "127.0.0.1") return true;
+  if (address.startsWith("10.") || address.startsWith("192.168.")) return true;
+  if (address.startsWith("fc") || address.startsWith("fd") || address.startsWith("fe80:")) return true;
+  const parts = address.split(".").map(Number);
+  return parts.length === 4
+    && parts.every((part) => Number.isInteger(part) && part >= 0 && part <= 255)
+    && parts[0] === 172
+    && parts[1] >= 16
+    && parts[1] <= 31;
+}
+
 function loginSessionId(value, fieldName) {
   if (value === null || value === undefined || value === "") return null;
   if (typeof value !== "string" || !/^[A-Za-z0-9][A-Za-z0-9_-]{7,127}$/.test(value)) {
@@ -65,10 +97,49 @@ function loginSessionId(value, fieldName) {
 export function createAdminApi(options = {}) {
   const providerManager = options.providerManager;
   const adminToken = options.adminToken || "";
+  const credentialStore = options.credentialStore || null;
   const logger = options.logger || null;
   if (!providerManager) throw new TypeError("createAdminApi requires providerManager");
   let refreshedLoginId = null;
   let refreshingLoginId = null;
+  const sessions = new Map();
+
+  const removeExpiredSessions = (now = Date.now()) => {
+    for (const [token, expiresAt] of sessions) {
+      if (expiresAt <= now) sessions.delete(token);
+    }
+  };
+  const issueSession = () => {
+    removeExpiredSessions();
+    while (sessions.size >= MAX_ADMIN_SESSIONS) {
+      sessions.delete(sessions.keys().next().value);
+    }
+    const token = randomBytes(32).toString("hex");
+    sessions.set(token, Date.now() + ADMIN_SESSION_TTL_MS);
+    return token;
+  };
+  const sessionAuthenticated = (request) => {
+    if (!credentialStore) return authenticateAdminRequest(request, adminToken);
+    const token = bearerToken(request);
+    if (!token) return false;
+    const expiresAt = sessions.get(token) || 0;
+    if (expiresAt <= Date.now()) {
+      sessions.delete(token);
+      return false;
+    }
+    return true;
+  };
+  const adminState = () => {
+    const state = providerManager.getAdminState();
+    if (!credentialStore) return state;
+    return {
+      ...state,
+      bridge: {
+        ...(state.bridge || {}),
+        secret: credentialStore.getBridgeSecret(),
+      },
+    };
+  };
 
   const refreshCompletedLogin = (loginId) => {
     if (!loginId || loginId === refreshedLoginId || loginId === refreshingLoginId) return;
@@ -87,20 +158,73 @@ export function createAdminApi(options = {}) {
 
   return async function handleAdminApi(request, pathname) {
     if (!pathname.startsWith("/admin/api/")) return null;
-    if (!authenticateAdminRequest(request, adminToken)) {
-      return result(
-        401,
-        { error: "admin_authentication_required", message: "管理令牌无效" },
-        { "WWW-Authenticate": "Bearer" },
-      );
-    }
-
     try {
+      if (credentialStore && pathname === "/admin/api/setup") {
+        if (request.method === "GET" || request.method === "HEAD") {
+          return result(200, credentialStore.getStatus());
+        }
+        if (request.method !== "POST") {
+          return result(405, { error: "method_not_allowed" }, { Allow: "GET, HEAD, POST" });
+        }
+        if (!privateSetupRequest(request)) {
+          return result(403, {
+            error: "local_setup_required",
+            message: "首次设置只能从 NAS 本机或局域网直连完成",
+          });
+        }
+        const body = await readJsonBody(request);
+        await credentialStore.completeSetup(body.adminPassword);
+        return result(201, {
+          setupRequired: false,
+          sessionToken: issueSession(),
+        });
+      }
+
+      if (credentialStore && pathname === "/admin/api/session" && request.method === "POST") {
+        const body = await readJsonBody(request);
+        if (!await credentialStore.authenticateAdmin(body.adminPassword)) {
+          return result(
+            401,
+            { error: "admin_authentication_required", message: "管理密码错误" },
+            { "WWW-Authenticate": "Bearer" },
+          );
+        }
+        return result(200, { sessionToken: issueSession() });
+      }
+
+      if (credentialStore?.getStatus().setupRequired) {
+        return result(428, { error: "setup_required", message: "请先完成首次设置" });
+      }
+
+      if (!sessionAuthenticated(request)) {
+        return result(
+          401,
+          { error: "admin_authentication_required", message: "管理会话无效" },
+          { "WWW-Authenticate": "Bearer" },
+        );
+      }
+
+      if (credentialStore && pathname === "/admin/api/session") {
+        if (request.method !== "DELETE") {
+          return result(405, { error: "method_not_allowed" }, { Allow: "POST, DELETE" });
+        }
+        sessions.delete(bearerToken(request));
+        return result(200, { ok: true });
+      }
+
       if (pathname === "/admin/api/state") {
         if (request.method !== "GET" && request.method !== "HEAD") {
           return result(405, { error: "method_not_allowed" }, { Allow: "GET, HEAD" });
         }
-        return result(200, providerManager.getAdminState());
+        return result(200, adminState());
+      }
+
+      if (credentialStore && pathname === "/admin/api/bridge/rotate") {
+        if (request.method !== "POST") {
+          return result(405, { error: "method_not_allowed" }, { Allow: "POST" });
+        }
+        await credentialStore.rotateBridgeSecret();
+        return result(200, adminState());
       }
 
       if (pathname === "/admin/api/settings") {
@@ -116,7 +240,7 @@ export function createAdminApi(options = {}) {
           return result(405, { error: "method_not_allowed" }, { Allow: "POST" });
         }
         await providerManager.pollNow(null, { manual: true });
-        return result(200, providerManager.getAdminState());
+        return result(200, adminState());
       }
 
       const providerRoute = routeProvider(pathname);
@@ -137,7 +261,7 @@ export function createAdminApi(options = {}) {
           return result(405, { error: "method_not_allowed" }, { Allow: "POST" });
         }
         await providerManager.pollNow(providerRoute.providerId, { manual: true });
-        return result(200, providerManager.getAdminState());
+        return result(200, adminState());
       }
 
       if (providerRoute.action === "login" && providerRoute.providerId === "codex") {
@@ -174,6 +298,9 @@ export function createAdminApi(options = {}) {
 
       return result(404, { error: "not_found" });
     } catch (error) {
+      if (error?.code === "SETUP_COMPLETE") {
+        return result(409, { error: "setup_complete", message: error.message });
+      }
       if (error?.code === "REFRESH_COOLDOWN") {
         return result(
           429,
@@ -187,6 +314,12 @@ export function createAdminApi(options = {}) {
           { error: error.code, message: error.message },
           error.headers,
         );
+      }
+      if (pathname === "/admin/api/setup" || pathname === "/admin/api/session") {
+        return result(400, {
+          error: "invalid_credentials",
+          message: error?.message || "凭据无效",
+        });
       }
       return result(400, {
         error: "invalid_request",

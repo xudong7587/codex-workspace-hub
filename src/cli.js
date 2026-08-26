@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 
 import { CodexAppServerClient } from "./codex-app-server.js";
 import { loadConfig, validateServeConfig } from "./config.js";
+import { CredentialStore } from "./credential-store.js";
 import {
   closeGatewayServer,
   createGatewayServer,
@@ -107,7 +108,7 @@ export function createRuntime(config, options = {}) {
   const clientFactory = options.clientFactory || (() => createClient(config, logger, options));
   const settingsStore = options.settingsStore || new SettingsStore({
     dataDir: config.dataDir,
-    adminToken: config.adminToken,
+    encryptionSecret: options.credentialStore?.getEncryptionSecret() || config.adminToken,
     defaults: defaultRuntimeSettings(config),
   });
   const codexProvider = options.codexProvider || createCodexProvider({
@@ -133,11 +134,28 @@ export function createRuntime(config, options = {}) {
   };
 }
 
+async function initializeCredentialStore(config, options = {}) {
+  const credentialStore = options.credentialStore || new CredentialStore({
+    dataDir: config.dataDir,
+    initialAdminPassword: config.adminToken,
+    initialBridgeSecret: config.tokenMonitorSecret,
+  });
+  await credentialStore.initialize?.();
+  return credentialStore;
+}
+
 export async function runServe(config, options = {}) {
   validateServeConfig(config);
-  const { logger, providerManager } = createRuntime(config, options);
+  const credentialStore = await initializeCredentialStore(config, options);
+  const runtimeOptions = { ...options, credentialStore };
+  const { logger, providerManager } = createRuntime(config, runtimeOptions);
   await providerManager.initialize?.();
-  const server = options.server || createGatewayServer({ config, providerManager, logger });
+  const server = options.server || createGatewayServer({
+    config,
+    providerManager,
+    credentialStore,
+    logger,
+  });
   await startGatewayServer(server, config);
   const address = server.address();
   logger.info("VWatch Quota Hub listening", {
@@ -218,7 +236,8 @@ export async function runLogin(config, options = {}) {
 export async function runStatus(config, options = {}) {
   const stdout = options.stdout || process.stdout;
   validateServeConfig(config);
-  const { providerManager } = createRuntime(config, options);
+  const credentialStore = await initializeCredentialStore(config, options);
+  const { providerManager } = createRuntime(config, { ...options, credentialStore });
   try {
     await providerManager.initialize?.();
     await providerManager.pollNow();

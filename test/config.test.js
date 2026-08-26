@@ -57,11 +57,9 @@ test("loadConfig rejects values that exceed Node's maximum timer delay", () => {
   );
 });
 
-test("validateServeConfig rejects missing and weak secrets", () => {
-  assert.throws(
-    () => validateServeConfig(loadConfig({})),
-    /TOKEN_MONITOR_SECRET/i,
-  );
+test("validateServeConfig allows panel-managed credentials and rejects weak overrides", () => {
+  const generated = loadConfig({});
+  assert.equal(validateServeConfig(generated), generated);
   assert.throws(
     () => validateServeConfig(loadConfig({ TOKEN_MONITOR_SECRET: "too-short" })),
     /at least 32 bytes/i,
@@ -77,17 +75,13 @@ test("validateServeConfig rejects a long placeholder secret", () => {
   );
 });
 
-test("validateServeConfig requires a separate strong admin token", () => {
-  assert.throws(
-    () => validateServeConfig(loadConfig({ TOKEN_MONITOR_SECRET: STRONG_SECRET })),
-    /HUB_ADMIN_TOKEN.*at least 32 bytes/i,
-  );
+test("validateServeConfig validates optional legacy credential overrides", () => {
   assert.throws(
     () => validateServeConfig(loadConfig({
       TOKEN_MONITOR_SECRET: STRONG_SECRET,
       HUB_ADMIN_TOKEN: "too-short",
     })),
-    /HUB_ADMIN_TOKEN.*at least 32 bytes/i,
+    /HUB_ADMIN_TOKEN.*at least 12 characters/i,
   );
   assert.throws(
     () => validateServeConfig(loadConfig({

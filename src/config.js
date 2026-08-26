@@ -148,28 +148,28 @@ export function loadConfig(env = process.env, overrides = {}) {
 }
 
 export function validateServeConfig(config) {
-  if (typeof config.tokenMonitorSecret !== "string" || config.tokenMonitorSecret.length === 0) {
-    throw new Error("TOKEN_MONITOR_SECRET is required");
-  }
-  if (Buffer.byteLength(config.tokenMonitorSecret, "utf8") < 32) {
+  if (
+    config.tokenMonitorSecret
+    && Buffer.byteLength(config.tokenMonitorSecret, "utf8") < 32
+  ) {
     throw new Error("TOKEN_MONITOR_SECRET must be at least 32 bytes");
   }
   const normalizedSecret = config.tokenMonitorSecret.toUpperCase().replace(/[^A-Z0-9]/g, "");
-  if (["CHANGEME", "REPLACEME", "YOURSECRET"].some((placeholder) => (
+  if (config.tokenMonitorSecret && ["CHANGEME", "REPLACEME", "YOURSECRET"].some((placeholder) => (
     normalizedSecret.includes(placeholder)
   ))) {
     throw new Error("TOKEN_MONITOR_SECRET must not be an example placeholder");
   }
-  if (typeof config.adminToken !== "string" || Buffer.byteLength(config.adminToken, "utf8") < 32) {
-    throw new Error("HUB_ADMIN_TOKEN is required and must be at least 32 bytes");
+  if (config.adminToken && config.adminToken.length < 12) {
+    throw new Error("HUB_ADMIN_TOKEN must be at least 12 characters when provided");
   }
   const normalizedAdminToken = config.adminToken.toUpperCase().replace(/[^A-Z0-9]/g, "");
-  if (["CHANGEME", "REPLACEME", "YOURTOKEN"].some((placeholder) => (
+  if (config.adminToken && ["CHANGEME", "REPLACEME", "YOURTOKEN"].some((placeholder) => (
     normalizedAdminToken.includes(placeholder)
   ))) {
     throw new Error("HUB_ADMIN_TOKEN must not be an example placeholder");
   }
-  if (config.adminToken === config.tokenMonitorSecret) {
+  if (config.adminToken && config.adminToken === config.tokenMonitorSecret) {
     throw new Error("HUB_ADMIN_TOKEN must differ from TOKEN_MONITOR_SECRET");
   }
   if (config.pollIntervalMs < 60_000) {

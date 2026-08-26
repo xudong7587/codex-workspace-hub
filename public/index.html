@@ -19,36 +19,46 @@
       <div class="noscript-message">管理面板需要 JavaScript 才能运行。</div>
     </noscript>
 
-    <main class="login-view" id="loginView" aria-labelledby="loginTitle">
+    <main class="login-view" id="loginView" aria-label="额度 Hub 管理入口">
       <section class="login-panel">
         <div class="brand-lockup" aria-label="VWatch Quota Hub">
           <span class="brand-mark" aria-hidden="true">VQ</span>
           <span>VWatch Quota Hub</span>
         </div>
-        <div class="login-copy">
-          <p class="eyebrow">本地管理</p>
-          <h1 id="loginTitle">连接你的额度 Hub</h1>
-          <p>输入部署时设置的管理令牌。令牌只保存在当前标签页的 sessionStorage 中，关闭标签页后会自动清除。</p>
-        </div>
-        <form id="loginForm" class="stack-form" novalidate>
-          <div class="field">
-            <label for="adminToken">HUB_ADMIN_TOKEN</label>
-            <input
-              id="adminToken"
-              name="adminToken"
-              type="password"
-              autocomplete="current-password"
-              spellcheck="false"
-              required
-              minlength="32"
-              placeholder="输入管理令牌"
-            >
+        <div id="setupContent" hidden>
+          <div class="login-copy">
+            <p class="eyebrow">首次设置</p>
+            <h1 id="loginTitle">创建管理密码</h1>
+            <p>只需设置一次。手机桥接 Secret 会由 Hub 自动生成，进入面板后直接复制。</p>
           </div>
-          <p class="form-message" id="authMessage" role="alert" aria-live="polite"></p>
-          <button class="button button-primary button-block" id="loginButton" type="submit">
-            进入管理面板
-          </button>
-        </form>
+          <form id="setupForm" class="stack-form" novalidate>
+            <div class="field">
+              <label for="setupPassword">管理密码</label>
+              <input id="setupPassword" type="password" autocomplete="new-password" required minlength="12" placeholder="至少 12 个字符">
+            </div>
+            <div class="field">
+              <label for="setupPasswordConfirm">确认管理密码</label>
+              <input id="setupPasswordConfirm" type="password" autocomplete="new-password" required minlength="12" placeholder="再次输入">
+            </div>
+            <p class="form-message" id="setupMessage" role="alert" aria-live="polite"></p>
+            <button class="button button-primary button-block" id="setupButton" type="submit">完成首次设置</button>
+          </form>
+        </div>
+        <div id="loginContent" hidden>
+          <div class="login-copy">
+            <p class="eyebrow">本地管理</p>
+            <h1>登录额度 Hub</h1>
+            <p>输入首次设置的管理密码。登录会话只保存在当前浏览器标签页。</p>
+          </div>
+          <form id="loginForm" class="stack-form" novalidate>
+            <div class="field">
+              <label for="adminToken">管理密码</label>
+              <input id="adminToken" name="adminToken" type="password" autocomplete="current-password" spellcheck="false" required minlength="12" placeholder="输入管理密码">
+            </div>
+            <p class="form-message" id="authMessage" role="alert" aria-live="polite"></p>
+            <button class="button button-primary button-block" id="loginButton" type="submit">进入管理面板</button>
+          </form>
+        </div>
         <p class="login-footnote">请只通过可信的 HTTPS 地址或本机回环地址访问本页面。</p>
       </section>
     </main>
@@ -172,16 +182,18 @@
                     </div>
                     <div>
                       <dt>访问密钥</dt>
-                      <dd id="bridgeSecretStatus">读取中</dd>
+                      <dd class="endpoint-value"><code id="bridgeSecret">读取中</code></dd>
                     </div>
                     <div>
                       <dt>手表可用连接</dt>
                       <dd id="bridgeProviderCount">0</dd>
                     </div>
                   </dl>
-                  <button class="button button-quiet button-small align-start" id="copyEndpointButton" type="button">
-                    复制额度地址
-                  </button>
+                  <div class="button-row align-start">
+                    <button class="button button-quiet button-small" id="copyEndpointButton" type="button">复制额度地址</button>
+                    <button class="button button-quiet button-small" id="copyBridgeSecretButton" type="button">复制 Secret</button>
+                    <button class="button button-quiet button-small button-danger-text" id="rotateBridgeSecretButton" type="button">重新生成</button>
+                  </div>
                 </article>
               </div>
             </section>

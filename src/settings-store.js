@@ -114,13 +114,13 @@ export function normalizeRuntimeSettings(value, defaults = defaultRuntimeSetting
   };
 }
 
-function encryptionKey(adminToken) {
-  if (typeof adminToken !== "string" || Buffer.byteLength(adminToken, "utf8") < 32) {
-    throw new Error("A strong HUB_ADMIN_TOKEN is required to protect settings");
+function encryptionKey(encryptionSecret) {
+  if (typeof encryptionSecret !== "string" || Buffer.byteLength(encryptionSecret, "utf8") < 32) {
+    throw new Error("A strong settings encryption secret is required");
   }
   return createHash("sha256")
     .update("vwatch-quota-hub/settings/v1\0", "utf8")
-    .update(adminToken, "utf8")
+    .update(encryptionSecret, "utf8")
     .digest();
 }
 
@@ -156,7 +156,7 @@ function decryptSettings(envelope, key) {
     const plaintext = Buffer.concat([decipher.update(encrypted), decipher.final()]);
     return JSON.parse(plaintext.toString("utf8"));
   } catch {
-    throw new Error("Settings could not be decrypted; check HUB_ADMIN_TOKEN");
+    throw new Error("Settings could not be decrypted with the configured encryption secret");
   }
 }
 
@@ -186,7 +186,7 @@ export class SettingsStore {
     this.defaults = normalizeRuntimeSettings(
       options.defaults || defaultRuntimeSettings(options.config),
     );
-    this.key = encryptionKey(options.adminToken);
+    this.key = encryptionKey(options.encryptionSecret || options.adminToken);
     this.value = null;
     this.writePromise = Promise.resolve();
   }

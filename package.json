@@ -1,6 +1,6 @@
 {
   "name": "vwatch-quota-hub",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "A dependency-free multi-provider AI quota hub for VWatch.",
   "type": "module",
@@ -12,6 +12,7 @@
   },
   "exports": {
     "./config": "./src/config.js",
+    "./credential-store": "./src/credential-store.js",
     "./auth": "./src/auth.js",
     "./codex-app-server": "./src/codex-app-server.js",
     "./quota-service": "./src/quota-service.js",
@@ -27,7 +28,7 @@
     "login": "node src/cli.js login",
     "status": "node src/cli.js status",
     "healthcheck": "node src/healthcheck.js",
-    "check": "node --check src/cli.js && node --check src/config.js && node --check src/auth.js && node --check src/logger.js && node --check src/codex-app-server.js && node --check src/quota-service.js && node --check src/settings-store.js && node --check src/provider-manager.js && node --check src/admin-api.js && node --check src/providers/shared.js && node --check src/providers/codex.js && node --check src/providers/openrouter.js && node --check src/http-server.js && node --check src/healthcheck.js && node --check public/app.js",
+    "check": "node --check src/cli.js && node --check src/config.js && node --check src/credential-store.js && node --check src/auth.js && node --check src/logger.js && node --check src/codex-app-server.js && node --check src/quota-service.js && node --check src/settings-store.js && node --check src/provider-manager.js && node --check src/admin-api.js && node --check src/providers/shared.js && node --check src/providers/codex.js && node --check src/providers/openrouter.js && node --check src/http-server.js && node --check src/healthcheck.js && node --check public/app.js",
     "test": "node --test test/*.test.js"
   }
 }

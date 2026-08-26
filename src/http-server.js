@@ -92,13 +92,18 @@ export function createGatewayServer(input, maybeOptions = {}) {
     : { ...maybeOptions, providerManager: input, quotaService: input };
   const config = options.config || options;
   const providerManager = options.providerManager || options.quotaService;
+  const credentialStore = options.credentialStore || null;
   const logger = options.logger || null;
-  const bridgeSecret = config.tokenMonitorSecret ?? config.secret ?? "";
+  const bridgeSecret = () => credentialStore?.getBridgeSecret()
+    || config.tokenMonitorSecret
+    || config.secret
+    || "";
   if (!providerManager) throw new TypeError("createGatewayServer requires providerManager");
   const adminAssets = options.adminAssets || loadAdminAssets(options.publicDir || DEFAULT_PUBLIC_DIR);
   const handleAdminApi = options.handleAdminApi || createAdminApi({
     providerManager,
     adminToken: config.adminToken,
+    credentialStore,
     logger,
   });
 
@@ -176,7 +181,7 @@ export function createGatewayServer(input, maybeOptions = {}) {
         );
         return;
       }
-      if (!authenticateRequest(request, bridgeSecret)) {
+      if (!authenticateRequest(request, bridgeSecret())) {
         writeJson(request, response, 403, { error: "forbidden" });
         return;
       }

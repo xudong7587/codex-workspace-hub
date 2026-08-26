@@ -127,21 +127,26 @@ Accept: application/json
 - `GET /livez`：进程和 HTTP 服务存活即返回 2xx；不要求已登录。
 - `GET /readyz`：存在至少一个新鲜且可供手机桥接使用的 provider 快照才返回 2xx；当前即 Codex 快照。
 
-两者都无需鉴权，但不应通过公网反向代理开放。Docker 健康检查用 `/bin/bash` 的内建 `/dev/tcp` 直接请求 `127.0.0.1:17321/livez`，不启动额外 Node VM、不依赖或安装 curl/wget，也不携带 `TOKEN_MONITOR_SECRET` 或 `HUB_ADMIN_TOKEN`。探针只判断本地 HTTP 进程存活，避免外部网络或账号登录过期触发容器重启风暴。
+两者都无需鉴权，但不应通过公网反向代理开放。Docker 健康检查用 `/bin/bash` 的内建 `/dev/tcp` 直接请求 `127.0.0.1:17321/livez`，不启动额外 Node VM、不依赖或安装 curl/wget，也不携带任何凭据。探针只判断本地 HTTP 进程存活，避免外部网络或账号登录过期触发容器重启风暴。
 
 ## 管理面板与管理 API
 
-静态面板位于 `GET /admin/`，资源为 `/admin/app.css` 和 `/admin/app.js`。静态 shell 不含 Secret；它把用户输入的 `HUB_ADMIN_TOKEN` 仅保存在当前标签页的 `sessionStorage`，并对 `/admin/api/*` 使用：
+静态面板位于 `GET /admin/`，资源为 `/admin/app.css` 和 `/admin/app.js`。首次启动时 Hub 自动生成内部加密密钥和手机桥接 Secret，用户只需在面板设置至少 12 个字符的管理密码。首次设置拒绝代理请求，并且只接受 NAS 本机或 RFC 1918/ULA 局域网来源，避免服务尚未认领时被公网抢先接管。
+
+管理密码使用 scrypt 加随机 salt 保存，不以明文落盘。登录成功后服务签发 12 小时内有效的随机内存会话；浏览器只把会话令牌保存在当前标签页的 `sessionStorage`，并对受保护的 `/admin/api/*` 使用：
 
 ```http
-Authorization: Bearer <HUB_ADMIN_TOKEN>
+Authorization: Bearer <ADMIN_SESSION_TOKEN>
 ```
 
-`HUB_ADMIN_TOKEN` 和 `TOKEN_MONITOR_SECRET` 都必须至少 32 字节，并且必须不同。前者只管理 Hub，后者只给手机桥接。管理 API 使用恒定时间比较令牌，并且不会把 provider API Key 返回给浏览器。
+手机桥接 Secret 是独立的 32 字节随机值，只返回给已登录的管理面板。重新生成后旧 Secret 立即失效。管理 API 不会把 provider API Key 返回给浏览器。
 
 当前面板使用的内部端点：
 
+- `GET/POST /admin/api/setup`：读取首次设置状态，或从本机/局域网直连设置管理密码。
+- `POST/DELETE /admin/api/session`：登录并创建会话，或退出当前会话。
 - `GET /admin/api/state`：读取脱敏状态、设置、provider 指标和 Hub RSS。
+- `POST /admin/api/bridge/rotate`：重新生成手机桥接 Secret。
 - `PUT /admin/api/settings`：更新刷新周期和 stale 周期。
 - `POST /admin/api/refresh`：手动刷新全部已启用且已配置的 provider。
 - `PUT /admin/api/providers/:id`：启停或更新 provider 设置；Secret 留空表示保留原值。
@@ -152,7 +157,7 @@ Authorization: Bearer <HUB_ADMIN_TOKEN>
 
 手动刷新默认有 60 秒冷却，过于频繁返回 429 和 `Retry-After`。刷新周期允许 60–86400 秒；stale 周期不得短于刷新周期，最大 604800 秒。默认分别为 300 秒与 900 秒。
 
-`/admin/` 和 `/admin/api/*` 默认不应通过公网反向代理开放。推荐只通过 LAN、VPN、SSH 端口转发或代理 IP 白名单访问；需要远程访问时仍必须使用 HTTPS。令牌鉴权是应用层边界，不替代网络访问控制。
+首次设置必须直连 NAS 的 `17321` 端口完成。之后 `/admin/` 和 `/admin/api/*` 推荐只通过 LAN、VPN、SSH 端口转发或代理 IP 白名单访问；需要远程访问时仍必须使用 HTTPS。密码和会话鉴权是应用层边界，不替代网络访问控制。
 
 管理页面响应设置严格 CSP、`X-Frame-Options: DENY`、`nosniff`、`no-referrer` 和权限策略；所有 JSON API 使用 `Cache-Control: no-store`。
 
@@ -160,11 +165,11 @@ Authorization: Bearer <HUB_ADMIN_TOKEN>
 
 运行时设置写入 named volume `hub-data` 中的 `/data/config.json`。文件内容是版本化 envelope，业务设置使用 AES-256-GCM 加密：
 
-1. 从 `HUB_ADMIN_TOKEN` 加入固定 domain separator 后计算 SHA-256，得到 256 位设置密钥。
+1. 首次启动时生成独立的 256 位内部秘密，保存在权限为 `0600` 的 `/data/credentials.json`，再经固定 domain separator 和 SHA-256 派生设置密钥。
 2. 每次保存生成 12 字节随机 IV，并写入 GCM authentication tag。
 3. 先写权限为 `0600` 的临时文件并同步，再原子重命名为 `config.json`。
 
-OpenRouter API Key 存在加密 payload 中。管理状态仅返回 `hasApiKey` 等布尔信息，不返回明文。更换 `HUB_ADMIN_TOKEN` 会改变派生密钥，旧 `config.json` 将无法解密；当前版本不自动轮换，必须先规划备份和重新配置。
+OpenRouter API Key 存在加密 payload 中。管理状态仅返回 `hasApiKey` 等布尔信息，不返回明文。设置密钥与管理密码相互独立，因此管理认证不会成为业务配置文件的明文加密密钥。
 
 Codex 托管登录状态由 Codex 自己写在 `/data/providers/codex`，不属于上述 `config.json` envelope。整个 `hub-data` 卷都必须视为敏感数据。Docker/NAS 管理员仍能读取容器环境和卷，因此卷级权限与备份加密仍然必要。
 
@@ -196,7 +201,7 @@ Hub 只在一次额度采集或设备码登录期间启动 `codex app-server` �
 }
 ```
 
-管理面板把 `verificationUrl` 和 `userCode` 显示给已通过 `HUB_ADMIN_TOKEN` 鉴权的浏览器；命令行则显示到终端。两者都等待相同 `loginId` 的 `account/login/completed` 成功通知，并在完成、失败、取消或超时后停止子进程。
+管理面板把 `verificationUrl` 和 `userCode` 显示给已登录管理会话的浏览器；命令行则显示到终端。两者都等待相同 `loginId` 的 `account/login/completed` 成功通知，并在完成、失败、取消或超时后停止子进程。
 
 命令行入口是：
 
@@ -257,7 +262,7 @@ DeepSeek 不在 Hub 中配置、采集或转换。按当前产品决定，它归
 - 容器精确固定 `@openai/codex@0.149.1`，禁止浮动 `latest`、`^` 或 `~`。
 - 每次升级 Codex CLI，先生成或核对该版本 schema，再运行 JSONL 握手、按需子进程退出、面板/CLI 设备码登录、rate-limit 映射和 APK payload fixture 测试。
 - 对 `/api/stats` 保留黄金样例，至少覆盖原值 `usedPercent`、禁止输出 `remainingPercent`、缺 session、缺 weekly、stale、错误 Secret 与无效重置时间。
-- 覆盖 `HUB_ADMIN_TOKEN` 与 bridge Secret 分离、管理 API 鉴权、Secret 脱敏、配置 AES-GCM 往返、错误密钥解密失败和原子保存测试。
+- 覆盖管理密码哈希、内存会话与 bridge Secret 分离、管理 API 鉴权、Secret 脱敏、配置 AES-GCM 往返、错误密钥解密失败和原子保存测试。
 - 覆盖 OpenRouter 两种官方响应映射，并断言它永远不进入 `/api/stats`。
 - 以 APK SHA-256 `3B82B7651BFE14FA2980827C66262987EF0487A201FCF8663130C833DCD2CA43` 为静态基线；APK 更新后重新分析 adapter ID 和字段。
 - x86-64 与 ARM64 镜像必须分别执行 `codex --version`、登录、刷新、接口和峰值 RSS 冒烟测试。128m 硬限能否覆盖刷新峰值必须在目标 NAS 上验证。

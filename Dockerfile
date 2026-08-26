@@ -1,7 +1,8 @@
 FROM node:24-bookworm-slim
 
 LABEL org.opencontainers.image.title="VWatch Quota Hub" \
-      org.opencontainers.image.description="Low-memory multi-provider quota hub for VWatch"
+      org.opencontainers.image.description="Low-memory multi-provider quota hub for VWatch" \
+      org.opencontainers.image.source="https://github.com/xudong7587/vwatch-quota-hub"
 
 ENV NODE_ENV=production \
     DATA_DIR=/data \

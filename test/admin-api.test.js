@@ -6,12 +6,13 @@ import { MAX_BODY_BYTES, createAdminApi } from "../src/admin-api.js";
 
 const ADMIN_TOKEN = "admin-api-token-0123456789abcdef0123456789abcdef";
 
-function request({ method = "GET", token, body, headers = {}, url } = {}) {
+function request({ method = "GET", token, body, headers = {}, url, remoteAddress } = {}) {
   const encoded = body === undefined
     ? null
     : Buffer.from(typeof body === "string" ? body : JSON.stringify(body));
   const stream = Readable.from(encoded ? [encoded] : []);
   stream.method = method;
+  stream.socket = { remoteAddress: remoteAddress || "127.0.0.1" };
   if (url) stream.url = url;
   stream.headers = { ...headers };
   if (token !== undefined) stream.headers.authorization = `Bearer ${token}`;
@@ -99,6 +100,83 @@ test("admin API requires the dedicated Bearer token", async () => {
   );
   assert.equal(accepted.statusCode, 200);
   assert.equal(accepted.payload.productName, "VWatch Quota Hub");
+});
+
+test("panel setup creates a session and manages the generated bridge secret", async () => {
+  let setupRequired = true;
+  let password = "";
+  let bridgeSecret = "a".repeat(64);
+  const credentialStore = {
+    getStatus: () => ({ setupRequired }),
+    async completeSetup(nextPassword) {
+      if (!setupRequired) {
+        const error = new Error("初始化已经完成");
+        error.code = "SETUP_COMPLETE";
+        throw error;
+      }
+      password = nextPassword;
+      setupRequired = false;
+    },
+    authenticateAdmin: async (candidate) => candidate === password,
+    getBridgeSecret: () => bridgeSecret,
+    async rotateBridgeSecret() {
+      bridgeSecret = "b".repeat(64);
+      return bridgeSecret;
+    },
+  };
+  const handle = createAdminApi({ providerManager: createManager(), credentialStore });
+
+  const status = await handle(request(), "/admin/api/setup");
+  assert.deepEqual(status.payload, { setupRequired: true });
+
+  const publicClaim = await handle(request({
+    method: "POST",
+    body: { adminPassword: "a long management password" },
+    remoteAddress: "203.0.113.8",
+  }), "/admin/api/setup");
+  assert.equal(publicClaim.statusCode, 403);
+
+  const forwardedClaim = await handle(request({
+    method: "POST",
+    body: { adminPassword: "a long management password" },
+    headers: { "x-forwarded-for": "192.168.1.20" },
+  }), "/admin/api/setup");
+  assert.equal(forwardedClaim.statusCode, 403);
+
+  const setup = await handle(request({
+    method: "POST",
+    body: { adminPassword: "a long management password" },
+    remoteAddress: "192.168.1.20",
+  }), "/admin/api/setup");
+  assert.equal(setup.statusCode, 201);
+  assert.match(setup.payload.sessionToken, /^[a-f0-9]{64}$/);
+
+  const state = await handle(
+    request({ token: setup.payload.sessionToken }),
+    "/admin/api/state",
+  );
+  assert.equal(state.statusCode, 200);
+  assert.equal(state.payload.bridge.secret, "a".repeat(64));
+
+  const rotated = await handle(
+    request({ method: "POST", token: setup.payload.sessionToken }),
+    "/admin/api/bridge/rotate",
+  );
+  assert.equal(rotated.statusCode, 200);
+  assert.equal(rotated.payload.bridge.secret, "b".repeat(64));
+
+  const login = await handle(request({
+    method: "POST",
+    body: { adminPassword: "a long management password" },
+  }), "/admin/api/session");
+  assert.equal(login.statusCode, 200);
+  assert.match(login.payload.sessionToken, /^[a-f0-9]{64}$/);
+
+  const passwordIsNotASession = await handle(
+    request({ token: "a long management password" }),
+    "/admin/api/state",
+  );
+  assert.equal(passwordIsNotASession.statusCode, 401);
 });
 
 test("settings updates accept JSON but reject bodies larger than 32 KiB", async () => {

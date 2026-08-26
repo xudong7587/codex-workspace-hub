@@ -132,6 +132,41 @@
     return data || {};
   }
 
+  async function publicApi(path, options = {}) {
+    const headers = {
+      Accept: "application/json",
+      "X-Requested-With": "VWatch-Quota-Hub"
+    };
+    if (options.body !== undefined) headers["Content-Type"] = "application/json";
+    let response;
+    try {
+      response = await fetch(path, {
+        method: options.method || "GET",
+        headers,
+        body: options.body === undefined ? undefined : JSON.stringify(options.body),
+        cache: "no-store",
+        credentials: "same-origin"
+      });
+    } catch {
+      throw new Error("无法连接 Hub，请检查网络和服务状态。");
+    }
+    const raw = await response.text();
+    let data = null;
+    if (raw) {
+      try {
+        data = JSON.parse(raw);
+      } catch {
+        data = null;
+      }
+    }
+    if (!response.ok) {
+      const error = new Error(extractErrorMessage(data) || `请求失败，HTTP ${response.status}`);
+      error.status = response.status;
+      throw error;
+    }
+    return data || {};
+  }
+
   function extractErrorMessage(data) {
     if (!data || typeof data !== "object") {
       return "";
@@ -199,9 +234,22 @@
   function showLogin(message = "", messageType = "error") {
     byId("appView").hidden = true;
     byId("loginView").hidden = false;
+    byId("setupContent").hidden = true;
+    byId("loginContent").hidden = false;
     setFormMessage("authMessage", message, message ? messageType : "");
     byId("adminToken").value = "";
     window.setTimeout(() => byId("adminToken").focus(), 0);
+  }
+
+  function showSetup(message = "") {
+    byId("appView").hidden = true;
+    byId("loginView").hidden = false;
+    byId("loginContent").hidden = true;
+    byId("setupContent").hidden = false;
+    setFormMessage("setupMessage", message, message ? "error" : "");
+    byId("setupPassword").value = "";
+    byId("setupPasswordConfirm").value = "";
+    window.setTimeout(() => byId("setupPassword").focus(), 0);
   }
 
   function showAppLoading() {
@@ -256,7 +304,7 @@
     } catch (error) {
       if (error.isAuthError) {
         clearToken();
-        showLogin("管理令牌无效或已失效，请重新输入。", "error");
+        showLogin("管理会话无效或已失效，请重新登录。", "error");
         return null;
       }
       showAppError(error.message || "暂时无法读取管理状态。");
@@ -310,21 +358,14 @@
   }
 
   function renderBridge(bridge, providers) {
-    const endpoint = typeof bridge.endpoint === "string" && bridge.endpoint
-      ? bridge.endpoint
-      : typeof bridge.statsUrl === "string" && bridge.statsUrl
-        ? bridge.statsUrl
-        : new URL("/api/stats", window.location.origin).href;
+    const endpoint = window.location.origin;
     byId("bridgeEndpoint").textContent = endpoint;
     byId("bridgeEndpoint").dataset.copyValue = endpoint;
 
-    if (bridge.secretConfigured === true) {
-      byId("bridgeSecretStatus").textContent = "已配置";
-    } else if (bridge.secretConfigured === false) {
-      byId("bridgeSecretStatus").textContent = "未配置";
-    } else {
-      byId("bridgeSecretStatus").textContent = "由服务端管理";
-    }
+    const bridgeSecret = typeof bridge.secret === "string" ? bridge.secret : "";
+    byId("bridgeSecret").textContent = bridgeSecret || "尚未生成";
+    byId("bridgeSecret").dataset.copyValue = bridgeSecret;
+    byId("copyBridgeSecretButton").disabled = !bridgeSecret;
 
     const compatibleCount = providers.filter((provider) => provider.enabled && provider.bridgeCompatible === true).length;
     byId("bridgeProviderCount").textContent = `${compatibleCount} 个`;
@@ -817,29 +858,94 @@
 
   async function handleLoginSubmit(event) {
     event.preventDefault();
-    const token = byId("adminToken").value.trim();
-    if (token.length < 32) {
-      setFormMessage("authMessage", "管理令牌至少需要 32 个字符。", "error");
+    const adminPassword = byId("adminToken").value;
+    if (adminPassword.length < 12) {
+      setFormMessage("authMessage", "管理密码至少需要 12 个字符。", "error");
       byId("adminToken").focus();
-      return;
-    }
-    if (!storeToken(token)) {
-      setFormMessage("authMessage", "当前浏览器无法使用 sessionStorage，不能安全保存管理会话。", "error");
       return;
     }
 
     const button = byId("loginButton");
     setButtonBusy(button, true, "正在连接");
     setFormMessage("authMessage", "", "");
-    await loadState({ initial: true });
-    setButtonBusy(button, false);
+    try {
+      const session = await publicApi("/admin/api/session", {
+        method: "POST",
+        body: { adminPassword }
+      });
+      if (!session.sessionToken || !storeToken(session.sessionToken)) {
+        throw new Error("当前浏览器无法保存管理会话。");
+      }
+      byId("adminToken").value = "";
+      await loadState({ initial: true });
+    } catch (error) {
+      setFormMessage("authMessage", error.message || "登录失败。", "error");
+    } finally {
+      setButtonBusy(button, false);
+    }
+  }
+
+  async function handleSetupSubmit(event) {
+    event.preventDefault();
+    const adminPassword = byId("setupPassword").value;
+    const confirmation = byId("setupPasswordConfirm").value;
+    if (adminPassword.length < 12) {
+      setFormMessage("setupMessage", "管理密码至少需要 12 个字符。", "error");
+      byId("setupPassword").focus();
+      return;
+    }
+    if (adminPassword !== confirmation) {
+      setFormMessage("setupMessage", "两次输入的管理密码不一致。", "error");
+      byId("setupPasswordConfirm").focus();
+      return;
+    }
+    const button = byId("setupButton");
+    setButtonBusy(button, true, "正在保存");
+    setFormMessage("setupMessage", "", "");
+    try {
+      const session = await publicApi("/admin/api/setup", {
+        method: "POST",
+        body: { adminPassword }
+      });
+      if (!session.sessionToken || !storeToken(session.sessionToken)) {
+        throw new Error("当前浏览器无法保存管理会话。");
+      }
+      await loadState({ initial: true });
+      showGlobalAlert("首次设置完成。请复制手机桥接 Secret，并连接 Codex。", "success", 6000);
+    } catch (error) {
+      setFormMessage("setupMessage", error.message || "首次设置失败。", "error");
+    } finally {
+      setButtonBusy(button, false);
+    }
   }
 
   async function logout() {
     await cancelCodexLogin({ quiet: true });
+    await api("/admin/api/session", { method: "DELETE" }).catch(() => {});
     clearToken();
     currentState = null;
     showLogin("已退出当前管理会话。", "success");
+  }
+
+  async function rotateBridgeSecret() {
+    if (!window.confirm("重新生成后，手机里的旧 Secret 会立即失效。继续吗？")) return;
+    const button = byId("rotateBridgeSecretButton");
+    setButtonBusy(button, true, "生成中");
+    try {
+      const state = await api("/admin/api/bridge/rotate", { method: "POST" });
+      currentState = state;
+      renderState(state);
+      showGlobalAlert("新的手机桥接 Secret 已生成，请同步更新手机 App。", "success", 5000);
+    } catch (error) {
+      if (error.isAuthError) {
+        clearToken();
+        showLogin("管理会话已失效，请重新登录。", "error");
+      } else {
+        showGlobalAlert(error.message || "Secret 生成失败。", "error");
+      }
+    } finally {
+      setButtonBusy(button, false);
+    }
   }
 
   async function handleSettingsSubmit(event) {
@@ -1249,6 +1355,7 @@
   }
 
   function bindEvents() {
+    byId("setupForm").addEventListener("submit", handleSetupSubmit);
     byId("loginForm").addEventListener("submit", handleLoginSubmit);
     byId("logoutButton").addEventListener("click", logout);
     byId("themeButton").addEventListener("click", cycleTheme);
@@ -1276,6 +1383,10 @@
     byId("copyEndpointButton").addEventListener("click", () => {
       writeClipboard(byId("bridgeEndpoint").dataset.copyValue || byId("bridgeEndpoint").textContent, "额度地址已复制。");
     });
+    byId("copyBridgeSecretButton").addEventListener("click", () => {
+      writeClipboard(byId("bridgeSecret").dataset.copyValue || "", "手机桥接 Secret 已复制。");
+    });
+    byId("rotateBridgeSecretButton").addEventListener("click", rotateBridgeSecret);
 
     document.querySelectorAll(".nav-link").forEach((link) => {
       link.addEventListener("click", () => {
@@ -1285,15 +1396,25 @@
     });
   }
 
-  function initialize() {
+  async function initialize() {
     applyTheme(getStoredTheme());
     bindEvents();
-    if (getStoredToken()) {
-      loadState({ initial: true });
-    } else {
-      showLogin("", "");
+    try {
+      const setup = await publicApi("/admin/api/setup");
+      if (setup.setupRequired) {
+        clearToken();
+        showSetup();
+        return;
+      }
+      if (getStoredToken()) {
+        await loadState({ initial: true });
+      } else {
+        showLogin("", "");
+      }
+    } catch (error) {
+      showLogin(error.message || "无法读取 Hub 初始化状态。", "error");
     }
   }
 
-  initialize();
+  void initialize();
 })();

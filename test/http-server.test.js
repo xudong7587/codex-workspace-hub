@@ -25,7 +25,7 @@ function close(server) {
   });
 }
 
-async function withGateway({ stats = FRESH_STATS, health } = {}, run) {
+async function withGateway({ stats = FRESH_STATS, health, credentialStore } = {}, run) {
   const quotaService = {
     getStats: () => stats,
     getHealth: () => health ?? ({
@@ -42,6 +42,7 @@ async function withGateway({ stats = FRESH_STATS, health } = {}, run) {
   const server = createGatewayServer({
     config: { tokenMonitorSecret: SECRET },
     quotaService,
+    credentialStore,
   });
   await listen(server);
   const address = server.address();
@@ -125,6 +126,31 @@ test("GET /api/stats returns 403 for an incorrect secret", async () => {
     });
     assert.equal(response.status, 403);
     assert.equal((await response.json()).error, "forbidden");
+  });
+});
+
+test("GET /api/stats immediately uses a bridge secret rotated in the panel", async () => {
+  let currentSecret = "c".repeat(64);
+  const credentialStore = {
+    getBridgeSecret: () => currentSecret,
+    getStatus: () => ({ setupRequired: false }),
+  };
+  await withGateway({ credentialStore }, async (baseUrl) => {
+    const original = await fetch(`${baseUrl}/api/stats`, {
+      headers: apkHeaders({ bearer: currentSecret, custom: currentSecret }),
+    });
+    assert.equal(original.status, 200);
+
+    const oldSecret = currentSecret;
+    currentSecret = "d".repeat(64);
+    const rejected = await fetch(`${baseUrl}/api/stats`, {
+      headers: apkHeaders({ bearer: oldSecret, custom: oldSecret }),
+    });
+    assert.equal(rejected.status, 403);
+    const accepted = await fetch(`${baseUrl}/api/stats`, {
+      headers: apkHeaders({ bearer: currentSecret, custom: currentSecret }),
+    });
+    assert.equal(accepted.status, 200);
   });
 });
 
