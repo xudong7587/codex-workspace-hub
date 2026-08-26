@@ -10,10 +10,6 @@ permissions:
   contents: read
   packages: write
 
-concurrency:
-  group: container-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   publish:
     runs-on: ubuntu-latest
