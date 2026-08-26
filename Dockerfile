@@ -1,12 +1,20 @@
-FROM node:22-alpine3.21
+FROM node:22-alpine3.21 AS node-runtime
+
+RUN apk add --no-cache binutils \
+    && strip --strip-unneeded /usr/local/bin/node \
+    && node --version
+
+FROM alpine:3.21
 
 LABEL org.opencontainers.image.title="VWatch Quota Hub" \
       org.opencontainers.image.description="Low-memory multi-provider quota hub for VWatch" \
       org.opencontainers.image.source="https://github.com/xudong7587/vwatch-quota-hub"
 
-RUN apk add --no-cache ca-certificates su-exec tzdata \
+RUN apk add --no-cache ca-certificates libstdc++ su-exec tzdata \
     && mkdir -p /app /data/providers/codex \
     && chown -R 1000:10 /app /data
+
+COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node
 
 ENV NODE_ENV=production \
     NODE_OPTIONS="--max-old-space-size=32 --max-semi-space-size=2" \
