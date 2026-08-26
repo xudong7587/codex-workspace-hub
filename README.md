@@ -1,27 +1,62 @@
 # VWatch Quota Hub
 
-VWatch Quota Hub 是运行在 NAS 上的低资源额度聚合服务。它保留现有手表和手机桥接链路，只替换原来必须常驻 PC 的 Token Monitor/HUB：
+面向 VWatch/OrbitV 额度表盘的轻量自托管 Hub。它运行在 NAS 或家庭服务器上，用 HTTPS 服务替代必须常驻 PC 的 Token Monitor/HUB，同时保留现有手表和手机“额度桥接”App。
+
+- 默认每 5 分钟刷新，15 分钟后缓存过期
+- 空闲内存目标为几十 MiB
+- 原生 HTML/CSS/JavaScript 管理面板，无前端运行时依赖
+- Codex 完整接入；DeepSeek 继续由手机端处理
+- Docker Compose 部署，面向常见 x86-64 与 ARM64 NAS
+
+[详细部署](#详细部署) · [协议说明](docs/protocol.md) · [问题反馈](https://github.com/xudong7587/vwatch-quota-hub/issues)
+
+## 它解决什么问题
 
 ```text
-手表 ↔ 手机额度桥接 ↔ HTTPS Hub ↔ provider
+手表 ↔ 手机额度桥接 ↔ HTTPS VWatch Quota Hub ↔ Codex
 ```
 
-公司 PC 和受管控的公司网络不再参与数据链路。手机仍通过“蓝牙运动健康渠道”把标准化额度发送到手表；Hub 只负责采集可用的 provider 数据，并提供现有 APK 能读取的 Token Monitor 兼容接口。
+公司 PC 和受管控的公司网络不再参与数据链路。手机仍通过“蓝牙运动健康渠道”把标准化额度发送到手表；Hub 只负责采集额度，并提供现有 APK 能读取的 Token Monitor 兼容接口。DeepSeek 仍由手机 App 直接处理，不经过 Hub。
 
-当前实际实现范围：
+## 当前支持
 
-- **Codex**：完整链路。Hub 按需启动本机 `codex app-server` 读取 ChatGPT/Codex 额度，生成手机桥接可识别的 `provider: "codex"`。
-- **DeepSeek**：按当前职责划分归手机端 APK 内置直连处理，不进入 Hub，不从 Hub 冒充其他 provider；手机端能力需由对应 APK 版本实现和验证。
-- **OpenRouter**：实验性面板采集。可读取当前 API Key 限额或账户 credits，但当前不写入手表协议。
-- 其他 AI/provider 尚未实现。代码采用 provider 注册结构，不代表已经支持所有主流 AI。
+| Provider | Hub 采集 | 管理面板 | 写入手表协议 | 状态 |
+| --- | --- | --- | --- | --- |
+| Codex | 是 | 是 | 是，使用 `provider: "codex"` | 完整链路 |
+| DeepSeek | 否 | 否 | 由手机 App 负责 | 不进入 Hub |
+| OpenRouter | 是 | 是 | 否 | 实验性面板采集 |
 
-静态兼容基线为 `com.cencen.quota.bridge` v0.2.1（versionCode 14），APK SHA-256：
+OpenRouter 可读取当前 API Key 限额或账户 credits，但暂不写入手表协议。代码采用 provider 注册结构，便于继续扩展；这不代表已经兼容所有主流 AI。
+
+## 五分钟开始部署
+
+```bash
+git clone https://github.com/xudong7587/vwatch-quota-hub.git
+cd vwatch-quota-hub
+cp .env.example .env
+openssl rand -hex 32
+openssl rand -hex 32
+```
+
+把两次随机输出分别填入 `.env` 的 `TOKEN_MONITOR_SECRET` 和 `HUB_ADMIN_TOKEN`，然后启动服务：
+
+```bash
+docker compose build
+docker compose up -d quota-hub
+docker compose logs --tail=100 quota-hub
+```
+
+接下来在 NAS 本机、SSH 端口转发或受控反向代理下打开 `http://127.0.0.1:17321/admin/` 登录 Codex；再通过可信 HTTPS 域名暴露 `/api/health` 和 `/api/stats`，把根地址与 `TOKEN_MONITOR_SECRET` 填进手机“额度桥接”App。生产部署前请继续阅读[详细部署](#详细部署)和[安全与运维](#安全与运维)。
+
+## 兼容性基线
+
+已静态分析并适配 `com.cencen.quota.bridge` v0.2.1（versionCode 14），APK SHA-256：
 
 ```text
 3B82B7651BFE14FA2980827C66262987EF0487A201FCF8663130C833DCD2CA43
 ```
 
-该 APK 的 Hub 适配器只识别 `codex`、`cursor`、`antigravity`、`opencode`、`kiro`、`grok`、`copilot`。这些 ID 的字段规则不同，Hub 不会把 DeepSeek、OpenRouter 或其他 AI 冒充成其中任何一个。
+该 APK 的 Hub 适配器只识别 `codex`、`cursor`、`antigravity`、`opencode`、`kiro`、`grok`、`copilot`。各 ID 的字段规则不同，因此 Hub 不会把 DeepSeek、OpenRouter 或其他 AI 冒充成其中任何一个。本仓库不包含或分发第三方 APK、OrbitV 或表盘文件。
 
 ## 资源设计
 
@@ -43,7 +78,7 @@ VWatch Quota Hub 是运行在 NAS 上的低资源额度聚合服务。它保留�
 
 镜像基于 Node 24 bookworm-slim，并精确固定 `@openai/codex@0.149.1`。Codex app-server 协议会随版本演进，升级 CLI 前必须重跑协议和 APK 兼容测试。参见 [OpenAI Codex App Server 官方文档](https://learn.chatgpt.com/docs/app-server)。
 
-## 快速部署
+## 详细部署
 
 ### 1. 准备两个不同的 Secret
 
@@ -254,3 +289,9 @@ docker buildx build --platform linux/amd64,linux/arm64 --tag registry.example.co
 - Hub 不向手机返回账号邮箱、OAuth token、Cookie、API Key 或对话内容。
 
 详细接口、字段映射和安全边界见 [docs/protocol.md](docs/protocol.md)。
+
+## 项目状态与反馈
+
+当前版本为 `0.2.0`。协议兼容、配置校验和服务逻辑已有自动化测试；不同 NAS 架构下的 Codex 登录、刷新峰值内存和长期运行情况仍建议在真实设备上验证。发现兼容问题或希望扩展 provider，请提交 [GitHub Issue](https://github.com/xudong7587/vwatch-quota-hub/issues)，并附上脱敏后的日志、NAS 架构、镜像版本和手机桥接版本。
+
+这是独立的社区项目，不隶属于 vivo、OrbitV、OpenAI、DeepSeek 或 OpenRouter。第三方名称仅用于说明兼容性。
