@@ -175,3 +175,117 @@ test("CodexDirectClient refreshes an expiring access token before quota polling"
   assert.equal(stored.tokens.refresh_token, "fresh-refresh");
   await client.stop();
 });
+
+test("CodexDirectClient retries transient and incomplete usage responses", async () => {
+  const codexHome = await mkdtemp(join(tmpdir(), "vwatch-codex-retry-"));
+  const now = 1_800_000_000_000;
+  await writeFile(join(codexHome, "auth.json"), JSON.stringify({
+    auth_mode: "chatgpt",
+    tokens: {
+      id_token: jwt({
+        "https://api.openai.com/auth": { chatgpt_account_id: "account-retry" },
+      }),
+      access_token: jwt({ exp: 1_900_000_000 }),
+      refresh_token: "refresh-retry",
+      account_id: "account-retry",
+    },
+  }));
+
+  let usageCalls = 0;
+  const delays = [];
+  const fetchImpl = async (url) => {
+    assert.match(String(url), /\/backend-api\/codex\/usage$/);
+    usageCalls += 1;
+    if (usageCalls === 1) {
+      return jsonResponse({ error: "temporarily unavailable" }, 503);
+    }
+    if (usageCalls === 2) return jsonResponse({ rate_limit: {} });
+    return jsonResponse({
+      rate_limit: {
+        primary_window: {
+          used_percent: 9,
+          limit_window_seconds: 18_000,
+          reset_at: 1_800_000_100,
+        },
+      },
+    });
+  };
+  const client = new CodexDirectClient({
+    codexHome,
+    fetchImpl,
+    now: () => now,
+    usageRetryBaseMs: 10,
+    usageRetryMaxMs: 20,
+    sleep: async (delayMs) => delays.push(delayMs),
+  });
+  await client.start();
+  const limits = await client.request("account/rateLimits/read");
+  assert.equal(limits.rateLimitsByLimitId.codex.primary.usedPercent, 9);
+  assert.equal(usageCalls, 3);
+  assert.deepEqual(delays, [10, 20]);
+  await client.stop();
+});
+
+test("CodexDirectClient does not retry a permanent authorization failure", async () => {
+  const codexHome = await mkdtemp(join(tmpdir(), "vwatch-codex-auth-failure-"));
+  await writeFile(join(codexHome, "auth.json"), JSON.stringify({
+    auth_mode: "chatgpt",
+    tokens: {
+      id_token: jwt({
+        "https://api.openai.com/auth": { chatgpt_account_id: "account-auth" },
+      }),
+      access_token: jwt({ exp: 1_900_000_000 }),
+      account_id: "account-auth",
+    },
+  }));
+  let calls = 0;
+  const client = new CodexDirectClient({
+    codexHome,
+    fetchImpl: async () => {
+      calls += 1;
+      return jsonResponse({ error: "forbidden" }, 403);
+    },
+    now: () => 1_800_000_000_000,
+    sleep: async () => assert.fail("authorization failures must not be retried"),
+  });
+  await client.start();
+  await assert.rejects(
+    client.request("account/rateLimits/read"),
+    (error) => error.code === "CODEX_AUTH_EXPIRED" && error.status === 403,
+  );
+  assert.equal(calls, 1);
+  await client.stop();
+});
+
+test("stopping CodexDirectClient cancels an in-progress retry backoff", async () => {
+  const codexHome = await mkdtemp(join(tmpdir(), "vwatch-codex-stop-retry-"));
+  await writeFile(join(codexHome, "auth.json"), JSON.stringify({
+    auth_mode: "chatgpt",
+    tokens: {
+      id_token: jwt({
+        "https://api.openai.com/auth": { chatgpt_account_id: "account-stop" },
+      }),
+      access_token: jwt({ exp: 1_900_000_000 }),
+      account_id: "account-stop",
+    },
+  }));
+  let announceAttempt;
+  const attempted = new Promise((resolve) => {
+    announceAttempt = resolve;
+  });
+  const client = new CodexDirectClient({
+    codexHome,
+    fetchImpl: async () => {
+      announceAttempt();
+      return jsonResponse({ error: "temporarily unavailable" }, 503);
+    },
+    now: () => 1_800_000_000_000,
+    usageRetryBaseMs: 10_000,
+    usageRetryMaxMs: 10_000,
+  });
+  await client.start();
+  const request = client.request("account/rateLimits/read");
+  await attempted;
+  await client.stop();
+  await assert.rejects(request, (error) => error.code === "CANCELLED");
+});

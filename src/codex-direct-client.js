@@ -8,6 +8,10 @@ const DEFAULT_CHATGPT_BASE_URL = "https://chatgpt.com/backend-api";
 const DEFAULT_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
 const MAX_AUTH_FILE_BYTES = 1024 * 1024;
 const ACCESS_TOKEN_REFRESH_WINDOW_MS = 5 * 60_000;
+const DEFAULT_USAGE_MAX_ATTEMPTS = 3;
+const DEFAULT_USAGE_RETRY_BASE_MS = 600;
+const DEFAULT_USAGE_RETRY_MAX_MS = 5_000;
+const RETRYABLE_HTTP_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
 
 function decodeJwtPayload(token) {
   if (typeof token !== "string") return null;
@@ -55,10 +59,43 @@ function abortError(message = "Codex request was cancelled") {
   return error;
 }
 
-function requestError(message, status) {
+function requestError(message, status, options = {}) {
   const error = new Error(message);
   if (status !== undefined) error.status = status;
+  if (options.code) error.code = options.code;
+  if (options.retryable !== undefined) error.retryable = Boolean(options.retryable);
+  if (Number.isFinite(options.retryAfterMs)) error.retryAfterMs = options.retryAfterMs;
   return error;
+}
+
+function retryAfterMs(response, now = Date.now()) {
+  const value = response?.headers?.get?.("retry-after");
+  if (!value) return null;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1_000;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? Math.max(0, timestamp - now) : null;
+}
+
+function usageHttpError(response, now) {
+  const status = response.status;
+  let code = "CODEX_REQUEST_FAILED";
+  if (status === 401 || status === 403) code = "CODEX_AUTH_EXPIRED";
+  else if (status === 429) code = "CODEX_RATE_LIMITED";
+  else if (status >= 500) code = "CODEX_UPSTREAM_UNAVAILABLE";
+  else if (RETRYABLE_HTTP_STATUSES.has(status)) code = "CODEX_TRANSIENT_RESPONSE";
+  return requestError(`Codex usage request failed (${status})`, status, {
+    code,
+    retryable: RETRYABLE_HTTP_STATUSES.has(status),
+    retryAfterMs: retryAfterMs(response, now),
+  });
+}
+
+function incompleteUsageError() {
+  return requestError("Codex returned an incomplete rate-limit snapshot", undefined, {
+    code: "CODEX_INVALID_RESPONSE",
+    retryable: true,
+  });
 }
 
 function finiteNumber(value) {
@@ -156,21 +193,37 @@ export class CodexDirectClient extends EventEmitter {
     this.fetchImpl = options.fetchImpl || globalThis.fetch;
     this.requestTimeoutMs = options.requestTimeoutMs ?? 30_000;
     this.loginTimeoutMs = options.loginTimeoutMs ?? 15 * 60_000;
+    const usageMaxAttempts = Number(options.usageMaxAttempts ?? DEFAULT_USAGE_MAX_ATTEMPTS);
+    const usageRetryBaseMs = Number(options.usageRetryBaseMs ?? DEFAULT_USAGE_RETRY_BASE_MS);
+    const usageRetryMaxMs = Number(options.usageRetryMaxMs ?? DEFAULT_USAGE_RETRY_MAX_MS);
+    this.usageMaxAttempts = Number.isFinite(usageMaxAttempts)
+      ? Math.max(1, Math.floor(usageMaxAttempts))
+      : DEFAULT_USAGE_MAX_ATTEMPTS;
+    this.usageRetryBaseMs = Number.isFinite(usageRetryBaseMs)
+      ? Math.max(0, usageRetryBaseMs)
+      : DEFAULT_USAGE_RETRY_BASE_MS;
+    this.usageRetryMaxMs = Math.max(
+      this.usageRetryBaseMs,
+      Number.isFinite(usageRetryMaxMs) ? usageRetryMaxMs : DEFAULT_USAGE_RETRY_MAX_MS,
+    );
     this.now = options.now || Date.now;
     this.sleep = options.sleep || sleep;
     this.logger = options.logger || null;
     this.ready = false;
     this.login = null;
     this.refreshPromise = null;
+    this.stopController = null;
   }
 
   async start() {
     await mkdir(this.codexHome, { recursive: true, mode: 0o700 });
+    this.stopController = new AbortController();
     this.ready = true;
   }
 
   async stop() {
     this.ready = false;
+    this.stopController?.abort();
     const login = this.login;
     login?.controller.abort();
     await login?.promise?.catch(() => {});
@@ -202,6 +255,34 @@ export class CodexDirectClient extends EventEmitter {
   }
 
   async #readRateLimits() {
+    let lastError;
+    for (let attempt = 1; attempt <= this.usageMaxAttempts; attempt += 1) {
+      try {
+        return await this.#readRateLimitsOnce();
+      } catch (error) {
+        lastError = error;
+        if (error?.code === "CANCELLED" || error?.name === "AbortError") throw error;
+        if (!error?.retryable || attempt >= this.usageMaxAttempts) throw error;
+        const exponentialDelay = this.usageRetryBaseMs * (2 ** (attempt - 1));
+        const requestedDelay = Number.isFinite(error.retryAfterMs) ? error.retryAfterMs : 0;
+        const delayMs = Math.min(
+          this.usageRetryMaxMs,
+          Math.max(exponentialDelay, requestedDelay),
+        );
+        this.logger?.warn?.("Codex usage request will be retried", {
+          attempt,
+          maxAttempts: this.usageMaxAttempts,
+          delayMs,
+          errorCode: error?.code || "UNKNOWN",
+          httpStatus: error?.status ?? null,
+        });
+        await this.sleep(delayMs, this.stopController?.signal);
+      }
+    }
+    throw lastError;
+  }
+
+  async #readRateLimitsOnce() {
     let auth = await this.#readAuth();
     if (!auth?.tokens?.access_token) throw new Error("Codex is not logged in");
     auth = await this.#ensureFreshAuth(auth);
@@ -210,11 +291,18 @@ export class CodexDirectClient extends EventEmitter {
       auth = await this.#refreshAuth(auth);
       response = await this.#fetchUsage(auth);
     }
-    if (!response.ok) {
-      throw requestError(`Codex usage request failed (${response.status})`, response.status);
+    if (!response.ok) throw usageHttpError(response, this.now());
+    let payload;
+    try {
+      payload = await response.json();
+    } catch {
+      throw incompleteUsageError();
     }
-    const payload = await this.#json(response, "Codex usage response was not valid JSON");
-    return mapCodexUsageResponse(payload, this.now());
+    try {
+      return mapCodexUsageResponse(payload, this.now());
+    } catch {
+      throw incompleteUsageError();
+    }
   }
 
   async #fetchUsage(auth) {
@@ -251,7 +339,16 @@ export class CodexDirectClient extends EventEmitter {
         }),
       });
       if (!response.ok) {
-        throw requestError(`Codex token refresh failed (${response.status})`, response.status);
+        let code = "CODEX_REQUEST_FAILED";
+        if ([400, 401, 403].includes(response.status)) code = "CODEX_AUTH_REFRESH_FAILED";
+        else if (response.status === 429) code = "CODEX_RATE_LIMITED";
+        else if (response.status >= 500) code = "CODEX_UPSTREAM_UNAVAILABLE";
+        else if (RETRYABLE_HTTP_STATUSES.has(response.status)) code = "CODEX_TRANSIENT_RESPONSE";
+        throw requestError(`Codex token refresh failed (${response.status})`, response.status, {
+          code,
+          retryable: RETRYABLE_HTTP_STATUSES.has(response.status),
+          retryAfterMs: retryAfterMs(response, this.now()),
+        });
       }
       const refreshed = await this.#json(response, "Codex token refresh response was not valid JSON");
       const next = structuredClone(auth);
@@ -423,22 +520,29 @@ export class CodexDirectClient extends EventEmitter {
   async #fetch(url, init = {}, outerSignal = null) {
     const controller = new AbortController();
     const onAbort = () => controller.abort();
+    const stopSignal = this.stopController?.signal;
     outerSignal?.addEventListener("abort", onAbort, { once: true });
+    stopSignal?.addEventListener("abort", onAbort, { once: true });
     const timer = setTimeout(() => controller.abort(), this.requestTimeoutMs);
     timer.unref?.();
     try {
       return await this.fetchImpl(url, { ...init, signal: controller.signal });
     } catch (error) {
-      if (outerSignal?.aborted) throw abortError();
+      if (outerSignal?.aborted || stopSignal?.aborted) throw abortError();
       if (controller.signal.aborted) {
         const timeout = new Error("Codex request timed out");
         timeout.code = "ETIMEDOUT";
+        timeout.retryable = true;
         throw timeout;
       }
-      throw error;
+      const networkError = new Error("Codex network request failed");
+      networkError.code = "NETWORK_ERROR";
+      networkError.retryable = true;
+      throw networkError;
     } finally {
       clearTimeout(timer);
       outerSignal?.removeEventListener("abort", onAbort);
+      stopSignal?.removeEventListener("abort", onAbort);
     }
   }
 

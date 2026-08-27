@@ -1099,9 +1099,18 @@
     setButtonBusy(button, true, "刷新中");
     setFormMessage(messageId, "正在读取最新额度。", "");
     try {
-      await api(`/admin/api/providers/${encodeURIComponent(id)}/refresh`, { method: "POST" });
-      setFormMessage(messageId, "额度已刷新。", "success");
-      await loadState();
+      const state = await api(`/admin/api/providers/${encodeURIComponent(id)}/refresh`, { method: "POST" });
+      currentState = state;
+      renderState(state);
+      showAppContent();
+      const provider = Array.isArray(state.providers)
+        ? state.providers.find((item) => item?.id === id)
+        : null;
+      if (provider?.error || isErrorStatus(provider?.status)) {
+        setFormMessage(messageId, provider?.error || "本次刷新没有获得可用额度。", "error");
+      } else {
+        setFormMessage(messageId, "额度已刷新。", "success");
+      }
     } catch (error) {
       handleActionError(error, messageId);
     } finally {
@@ -1113,9 +1122,20 @@
     const button = byId("refreshAllButton");
     setButtonBusy(button, true, "刷新中");
     try {
-      await api("/admin/api/refresh", { method: "POST" });
-      await loadState();
-      showGlobalAlert("所有已启用连接器均已刷新。", "success", 3000);
+      const state = await api("/admin/api/refresh", { method: "POST" });
+      currentState = state;
+      renderState(state);
+      showAppContent();
+      const failed = Array.isArray(state.providers)
+        ? state.providers.filter((provider) => provider?.enabled && (
+          provider.error || isErrorStatus(provider.status)
+        ))
+        : [];
+      if (failed.length > 0) {
+        showGlobalAlert(`${failed.length} 个连接器刷新失败，Hub 将按计划重试。`, "error", 5000);
+      } else {
+        showGlobalAlert("所有已启用连接器均已刷新。", "success", 3000);
+      }
     } catch (error) {
       if (error.isAuthError) {
         clearToken();

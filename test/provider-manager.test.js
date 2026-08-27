@@ -194,6 +194,92 @@ test("ProviderManager collects providers sequentially and schedules the next pol
   await manager.stop();
 });
 
+test("an initial Codex failure schedules a short recovery retry and exposes a useful error", async () => {
+  const scheduled = [];
+  let shouldFail = true;
+  const now = 1_500_000;
+  const manager = new ProviderManager({
+    settingsStore: new FakeSettingsStore(settings({
+      providers: {
+        codex: { enabled: true },
+        openrouter: { enabled: false, apiKey: "", mode: "key" },
+      },
+    })),
+    providers: [{
+      id: "codex",
+      displayName: "Codex",
+      bridgeCompatible: true,
+      collect: async () => {
+        if (shouldFail) {
+          const error = new Error("upstream unavailable");
+          error.code = "CODEX_UPSTREAM_UNAVAILABLE";
+          error.status = 503;
+          error.retryable = true;
+          throw error;
+        }
+        return codexSnapshot(now);
+      },
+    }],
+    now: () => now,
+    setTimeout: (callback, delayMs) => {
+      const timer = { callback, delayMs, unref() {} };
+      scheduled.push(timer);
+      return timer;
+    },
+    clearTimeout: () => {},
+  });
+
+  await manager.start();
+  assert.equal(scheduled.at(-1).delayMs, 60_000);
+  const failed = manager.getAdminState(now).providers[0];
+  assert.equal(failed.status, "error");
+  assert.equal(failed.error, "Codex 服务暂时不可用，Hub 将自动重试");
+
+  shouldFail = false;
+  await manager.pollNow("codex");
+  assert.equal(scheduled.at(-1).delayMs, 300_000);
+  assert.equal(manager.getAdminState(now).providers[0].status, "ok");
+  await manager.stop();
+});
+
+test("a permanent Codex authorization failure keeps the normal refresh cadence", async () => {
+  const scheduled = [];
+  const now = 1_600_000;
+  const manager = new ProviderManager({
+    settingsStore: new FakeSettingsStore(settings({
+      providers: {
+        codex: { enabled: true },
+        openrouter: { enabled: false, apiKey: "", mode: "key" },
+      },
+    })),
+    providers: [{
+      id: "codex",
+      displayName: "Codex",
+      bridgeCompatible: true,
+      collect: async () => {
+        const error = new Error("forbidden");
+        error.code = "CODEX_AUTH_EXPIRED";
+        error.status = 403;
+        error.retryable = false;
+        throw error;
+      },
+    }],
+    now: () => now,
+    setTimeout: (callback, delayMs) => {
+      const timer = { callback, delayMs, unref() {} };
+      scheduled.push(timer);
+      return timer;
+    },
+    clearTimeout: () => {},
+  });
+
+  await manager.start();
+  assert.equal(scheduled.at(-1).delayMs, 300_000);
+  const codex = manager.getAdminState(now).providers[0];
+  assert.equal(codex.error, "Codex 登录已失效，请重新连接账号");
+  await manager.stop();
+});
+
 test("fresh bridge stats contain Codex only and never export dashboard-only OpenRouter", async () => {
   const updatedAt = 2_000_000;
   const manager = new ProviderManager({

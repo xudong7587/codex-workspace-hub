@@ -5,6 +5,24 @@ function clone(value) {
 function safeProviderError(providerId, error) {
   if (providerId === "codex") {
     if (/not logged in/i.test(error?.message || "")) return "Codex 尚未登录";
+    if (
+      error?.code === "CODEX_AUTH_EXPIRED"
+      || error?.code === "CODEX_AUTH_REFRESH_FAILED"
+      || error?.status === 401
+      || error?.status === 403
+    ) return "Codex 登录已失效，请重新连接账号";
+    if (error?.code === "CODEX_RATE_LIMITED" || error?.status === 429) {
+      return "Codex 暂时限制额度查询，Hub 将自动重试";
+    }
+    if (error?.code === "ETIMEDOUT" || error?.code === "NETWORK_ERROR") {
+      return "Codex 网络连接失败，Hub 将自动重试";
+    }
+    if (error?.code === "CODEX_UPSTREAM_UNAVAILABLE" || error?.status >= 500) {
+      return "Codex 服务暂时不可用，Hub 将自动重试";
+    }
+    if (error?.code === "CODEX_INVALID_RESPONSE") {
+      return "Codex 返回的额度数据不完整，Hub 将自动重试";
+    }
     return "Codex 额度刷新失败";
   }
   if (providerId === "openrouter") return "OpenRouter 额度刷新失败";
@@ -80,6 +98,7 @@ export class ProviderManager {
     this.setTimeout = options.setTimeout || globalThis.setTimeout;
     this.clearTimeout = options.clearTimeout || globalThis.clearTimeout;
     this.manualRefreshCooldownMs = options.manualRefreshCooldownMs ?? 60_000;
+    this.failureRetryBaseMs = options.failureRetryBaseMs ?? 60_000;
     this.settings = null;
     this.initializePromise = null;
     this.settingsMutationPromise = null;
@@ -99,6 +118,7 @@ export class ProviderManager {
         lastSuccessAt: null,
         lastError: null,
         consecutiveFailures: 0,
+        retryableFailure: false,
         refreshing: false,
       });
     }
@@ -188,6 +208,7 @@ export class ProviderManager {
       }
       if (provider.isConfigured && !provider.isConfigured(config)) {
         entry.lastError = "尚未配置连接凭据";
+        entry.retryableFailure = false;
         results[id] = null;
         continue;
       }
@@ -209,6 +230,7 @@ export class ProviderManager {
         entry.lastSuccessAt = snapshot.updatedAt;
         entry.lastError = null;
         entry.consecutiveFailures = 0;
+        entry.retryableFailure = false;
         results[id] = clone(snapshot);
       } catch (error) {
         if (
@@ -222,10 +244,14 @@ export class ProviderManager {
         }
         entry.lastError = safeProviderError(id, error);
         entry.consecutiveFailures += 1;
+        entry.retryableFailure = Boolean(error?.retryable);
         results[id] = null;
         this.logger?.warn?.("Provider refresh failed", {
           provider: id,
           errorType: error?.name || "Error",
+          errorCode: error?.code || "UNKNOWN",
+          httpStatus: error?.status ?? null,
+          retryable: Boolean(error?.retryable),
           consecutiveFailures: entry.consecutiveFailures,
         });
       } finally {
@@ -249,7 +275,29 @@ export class ProviderManager {
   }
 
   #scheduleNextAutomaticRefresh() {
-    this.#schedule(nextAutomaticRefreshDelay(this.settings, this.now()));
+    const now = this.now();
+    const normalDelay = nextAutomaticRefreshDelay(this.settings, now);
+    if (!isRefreshWindowActive(this.settings, now)) {
+      this.#schedule(normalDelay);
+      return;
+    }
+    const staleAfterMs = this.settings.staleAfterSeconds * 1_000;
+    let unresolvedFailures = 0;
+    for (const [id, provider] of this.registry) {
+      const config = this.settings.providers[id] || { enabled: false };
+      if (!config.enabled || (provider.isConfigured && !provider.isConfigured(config))) continue;
+      const entry = this.entries.get(id);
+      if (entry.retryableFailure && !freshSnapshot(entry, staleAfterMs, now)) {
+        unresolvedFailures = Math.max(unresolvedFailures, entry.consecutiveFailures);
+      }
+    }
+    if (unresolvedFailures === 0) {
+      this.#schedule(normalDelay);
+      return;
+    }
+    const exponent = Math.min(unresolvedFailures - 1, 3);
+    const recoveryDelay = this.failureRetryBaseMs * (2 ** exponent);
+    this.#schedule(Math.min(normalDelay, recoveryDelay));
   }
 
   #cancelTimer() {
@@ -417,6 +465,7 @@ export class ProviderManager {
     entry.lastSuccessAt = null;
     entry.lastError = null;
     entry.consecutiveFailures = 0;
+    entry.retryableFailure = false;
   }
 
   async #mutateSettings(mutator) {
