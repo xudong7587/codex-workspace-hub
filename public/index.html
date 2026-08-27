@@ -64,40 +64,39 @@
     </main>
 
     <div class="app-shell" id="appView" hidden>
-      <aside class="shell-sidebar" aria-label="主导航">
-        <div class="sidebar-top">
+      <header class="shell-header">
+        <div class="header-inner">
           <a class="sidebar-brand" href="#overview" aria-label="VWatch Quota Hub 首页">
             <span class="brand-mark" aria-hidden="true">VQ</span>
-            <span class="brand-name">VWatch Quota Hub</span>
+            <span class="brand-copy">
+              <strong class="brand-name">VWatch Quota Hub</strong>
+              <small>AI 额度桥接工作台</small>
+            </span>
           </a>
-          <nav class="sidebar-nav">
-            <a class="nav-link is-active" href="#overview">概览</a>
-            <a class="nav-link" href="#settings">刷新设置</a>
-            <a class="nav-link" href="#providers">AI 连接</a>
-            <a class="nav-link" href="#bridge">手表桥接</a>
-          </nav>
-        </div>
-        <div class="sidebar-footer">
-          <span class="session-label">管理会话已解锁</span>
-          <button class="text-button" id="logoutButton" type="button">退出</button>
-        </div>
-      </aside>
 
-      <div class="shell-main">
-        <header class="topbar">
-          <div class="topbar-status">
-            <span class="status-indicator" id="topStatusIndicator" aria-hidden="true"></span>
-            <span id="topStatusText">正在连接</span>
-          </div>
-          <div class="topbar-actions">
+          <div class="header-controls">
+            <div class="topbar-status">
+              <span class="status-indicator" id="topStatusIndicator" aria-hidden="true"></span>
+              <span id="topStatusText">正在连接</span>
+            </div>
             <button class="button button-quiet button-small" id="themeButton" type="button" aria-label="切换外观">
               外观：系统
             </button>
             <button class="button button-secondary button-small" id="refreshAllButton" type="button">
               刷新状态
             </button>
+            <button class="text-button" id="logoutButton" type="button">退出</button>
           </div>
-        </header>
+        </div>
+      </header>
+
+      <div class="shell-main">
+        <nav class="sidebar-nav" aria-label="主导航">
+          <a class="nav-link is-active" href="#overview">概览</a>
+          <a class="nav-link" href="#settings">刷新设置</a>
+          <a class="nav-link" href="#providers">AI 连接</a>
+          <a class="nav-link" href="#bridge">手表桥接</a>
+        </nav>
 
         <main class="content" id="mainContent" tabindex="-1">
           <div class="global-alert" id="globalAlert" role="status" aria-live="polite" hidden></div>

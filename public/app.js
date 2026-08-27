@@ -8,6 +8,7 @@
 
   let currentState = null;
   let toastTimer = null;
+  let toastHideTimer = null;
   let alertTimer = null;
   let codexLoginTimer = null;
   let codexLoginActive = false;
@@ -208,11 +209,17 @@
   function showToast(message) {
     const toast = byId("toast");
     window.clearTimeout(toastTimer);
+    window.clearTimeout(toastHideTimer);
+    toast.classList.remove("is-hiding");
     toast.textContent = message;
     toast.hidden = false;
     toastTimer = window.setTimeout(() => {
-      toast.hidden = true;
-    }, 3200);
+      toast.classList.add("is-hiding");
+      toastHideTimer = window.setTimeout(() => {
+        toast.hidden = true;
+        toast.classList.remove("is-hiding");
+      }, 180);
+    }, 3020);
   }
 
   function showGlobalAlert(message, type = "", duration = 5000) {
