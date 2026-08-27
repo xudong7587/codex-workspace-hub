@@ -33,6 +33,8 @@ test("runtime settings default to a five-minute poll and fifteen-minute stale wi
 
   assert.equal(defaults.pollIntervalSeconds, 300);
   assert.equal(defaults.staleAfterSeconds, 900);
+  assert.equal(defaults.refreshWindowStart, "00:00");
+  assert.equal(defaults.refreshWindowEnd, "00:00");
   assert.deepEqual(normalizeRuntimeSettings({}), defaults);
 });
 
@@ -52,10 +54,16 @@ test("runtime timing and provider settings are validated before persistence", ()
     () => normalizeRuntimeSettings({ providers: { openrouter: { mode: "unknown" } } }),
     /mode must be key or credits/i,
   );
+  assert.throws(
+    () => normalizeRuntimeSettings({ refreshWindowStart: "24:00" }),
+    /refreshWindowStart must use the HH:mm format/i,
+  );
 
   const normalized = normalizeRuntimeSettings({
     pollIntervalSeconds: 600,
     staleAfterSeconds: 1_800,
+    refreshWindowStart: "07:30",
+    refreshWindowEnd: "23:15",
     providers: {
       codex: { enabled: false },
       openrouter: { enabled: true, apiKey: "  sk-or-test  ", mode: "credits" },
@@ -63,6 +71,8 @@ test("runtime timing and provider settings are validated before persistence", ()
   });
   assert.equal(normalized.pollIntervalSeconds, 600);
   assert.equal(normalized.staleAfterSeconds, 1_800);
+  assert.equal(normalized.refreshWindowStart, "07:30");
+  assert.equal(normalized.refreshWindowEnd, "23:15");
   assert.deepEqual(normalized.providers, {
     codex: { enabled: false },
     openrouter: { enabled: true, apiKey: "sk-or-test", mode: "credits" },

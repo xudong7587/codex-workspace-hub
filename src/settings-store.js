@@ -43,11 +43,22 @@ function cleanSecret(value) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function clockTime(value, fallback, name) {
+  const text = typeof value === "string" ? value.trim() : "";
+  if (!text) return fallback;
+  if (!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(text)) {
+    throw new Error(`${name} must use the HH:mm format`);
+  }
+  return text;
+}
+
 export function defaultRuntimeSettings(config = {}) {
   return {
     schemaVersion: SCHEMA_VERSION,
     pollIntervalSeconds: Math.round((config.pollIntervalMs ?? 300_000) / 1_000),
     staleAfterSeconds: Math.round((config.staleAfterMs ?? 900_000) / 1_000),
+    refreshWindowStart: "00:00",
+    refreshWindowEnd: "00:00",
     providers: {
       codex: {
         enabled: true,
@@ -77,6 +88,16 @@ export function normalizeRuntimeSettings(value, defaults = defaultRuntimeSetting
     MAX_STALE_SECONDS,
     "staleAfterSeconds",
   );
+  const refreshWindowStart = clockTime(
+    input.refreshWindowStart,
+    defaults.refreshWindowStart,
+    "refreshWindowStart",
+  );
+  const refreshWindowEnd = clockTime(
+    input.refreshWindowEnd,
+    defaults.refreshWindowEnd,
+    "refreshWindowEnd",
+  );
   const providers = input.providers && typeof input.providers === "object"
     ? input.providers
     : {};
@@ -97,6 +118,8 @@ export function normalizeRuntimeSettings(value, defaults = defaultRuntimeSetting
     schemaVersion: SCHEMA_VERSION,
     pollIntervalSeconds,
     staleAfterSeconds,
+    refreshWindowStart,
+    refreshWindowEnd,
     providers: {
       codex: {
         enabled: codex.enabled === undefined

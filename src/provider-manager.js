@@ -27,6 +27,47 @@ function publicProviderConfig(providerId, config = {}) {
   return {};
 }
 
+function clockMinutes(value) {
+  const [hours, minutes] = String(value).split(":").map(Number);
+  return (hours * 60) + minutes;
+}
+
+function minuteOfDay(now) {
+  const date = new Date(now);
+  return (date.getHours() * 60) + date.getMinutes();
+}
+
+function nextLocalOccurrence(now, targetMinutes) {
+  const candidate = new Date(now);
+  candidate.setHours(Math.floor(targetMinutes / 60), targetMinutes % 60, 0, 0);
+  if (candidate.getTime() <= now) candidate.setDate(candidate.getDate() + 1);
+  return Math.max(1_000, candidate.getTime() - now);
+}
+
+export function isRefreshWindowActive(settings, now = Date.now()) {
+  const start = clockMinutes(settings.refreshWindowStart);
+  const end = clockMinutes(settings.refreshWindowEnd);
+  if (start === end) return true;
+  const current = minuteOfDay(now);
+  if (start < end) return current >= start && current < end;
+  return current >= start || current < end;
+}
+
+export function nextAutomaticRefreshDelay(settings, now = Date.now()) {
+  const intervalMs = settings.pollIntervalSeconds * 1_000;
+  const start = clockMinutes(settings.refreshWindowStart);
+  const end = clockMinutes(settings.refreshWindowEnd);
+  if (start === end) return intervalMs;
+  if (!isRefreshWindowActive(settings, now)) return nextLocalOccurrence(now, start);
+
+  const date = new Date(now);
+  const current = minuteOfDay(now);
+  const windowEnd = new Date(now);
+  windowEnd.setHours(Math.floor(end / 60), end % 60, 0, 0);
+  if (start > end && current >= start) windowEnd.setDate(date.getDate() + 1);
+  return Math.min(intervalMs, Math.max(1_000, windowEnd.getTime() - now));
+}
+
 export class ProviderManager {
   constructor(options = {}) {
     if (!options.settingsStore) throw new TypeError("ProviderManager requires settingsStore");
@@ -90,7 +131,11 @@ export class ProviderManager {
     if (this.running) return this.pollPromise;
     this.stopping = false;
     this.running = true;
-    return this.pollNow();
+    if (!isRefreshWindowActive(this.settings, this.now())) {
+      this.#scheduleNextAutomaticRefresh();
+      return {};
+    }
+    return this.pollNow(null, { scheduled: true });
   }
 
   async pollNow(providerId = null, options = {}) {
@@ -115,6 +160,7 @@ export class ProviderManager {
     const operation = (async () => {
       if (previous) await previous.catch(() => {});
       if (this.stopping) return {};
+      if (options.scheduled && !isRefreshWindowActive(this.settings, this.now())) return {};
       return this.#poll(providerId);
     })();
     this.pollPromise = operation;
@@ -123,7 +169,7 @@ export class ProviderManager {
     } finally {
       if (this.pollPromise === operation) {
         this.pollPromise = null;
-        if (this.running) this.#schedule(this.settings.pollIntervalSeconds * 1_000);
+        if (this.running) this.#scheduleNextAutomaticRefresh();
       }
     }
   }
@@ -197,9 +243,13 @@ export class ProviderManager {
     this.#cancelTimer();
     this.timer = this.setTimeout(() => {
       this.timer = null;
-      void this.pollNow();
+      void this.pollNow(null, { scheduled: true });
     }, delayMs);
     this.timer?.unref?.();
+  }
+
+  #scheduleNextAutomaticRefresh() {
+    this.#schedule(nextAutomaticRefreshDelay(this.settings, this.now()));
   }
 
   #cancelTimer() {
@@ -287,6 +337,14 @@ export class ProviderManager {
       settings: {
         pollIntervalSeconds: this.settings.pollIntervalSeconds,
         staleAfterSeconds: this.settings.staleAfterSeconds,
+        refreshWindowStart: this.settings.refreshWindowStart,
+        refreshWindowEnd: this.settings.refreshWindowEnd,
+      },
+      schedule: {
+        active: isRefreshWindowActive(this.settings, now),
+        nextAutomaticRefreshAt: new Date(
+          now + nextAutomaticRefreshDelay(this.settings, now),
+        ).toISOString(),
       },
       bridge: {
         ready: Boolean(this.getStats(now)),
@@ -308,8 +366,10 @@ export class ProviderManager {
       ...current,
       pollIntervalSeconds: patch.pollIntervalSeconds ?? current.pollIntervalSeconds,
       staleAfterSeconds: patch.staleAfterSeconds ?? current.staleAfterSeconds,
+      refreshWindowStart: patch.refreshWindowStart ?? current.refreshWindowStart,
+      refreshWindowEnd: patch.refreshWindowEnd ?? current.refreshWindowEnd,
     }));
-    if (this.running) this.#schedule(this.settings.pollIntervalSeconds * 1_000);
+    if (this.running) this.#scheduleNextAutomaticRefresh();
     return this.getAdminState();
   }
 

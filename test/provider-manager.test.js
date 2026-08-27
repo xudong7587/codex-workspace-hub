@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { ProviderManager } from "../src/provider-manager.js";
+import {
+  ProviderManager,
+  isRefreshWindowActive,
+  nextAutomaticRefreshDelay,
+} from "../src/provider-manager.js";
 
 function clone(value) {
   return structuredClone(value);
@@ -27,6 +31,8 @@ function settings(overrides = {}) {
     schemaVersion: 1,
     pollIntervalSeconds: 300,
     staleAfterSeconds: 900,
+    refreshWindowStart: "00:00",
+    refreshWindowEnd: "00:00",
     providers: {
       codex: { enabled: true },
       openrouter: { enabled: true, apiKey: "test-key", mode: "key" },
@@ -34,6 +40,76 @@ function settings(overrides = {}) {
     ...overrides,
   };
 }
+
+function localTime(hours, minutes, seconds = 0) {
+  return new Date(2026, 7, 27, hours, minutes, seconds, 0).getTime();
+}
+
+test("refresh windows support daytime, overnight, and all-day schedules", () => {
+  const daytime = settings({ refreshWindowStart: "07:00", refreshWindowEnd: "23:00" });
+  assert.equal(isRefreshWindowActive(daytime, localTime(6, 59)), false);
+  assert.equal(isRefreshWindowActive(daytime, localTime(7, 0)), true);
+  assert.equal(isRefreshWindowActive(daytime, localTime(23, 0)), false);
+
+  const overnight = settings({ refreshWindowStart: "22:00", refreshWindowEnd: "06:00" });
+  assert.equal(isRefreshWindowActive(overnight, localTime(23, 0)), true);
+  assert.equal(isRefreshWindowActive(overnight, localTime(5, 59)), true);
+  assert.equal(isRefreshWindowActive(overnight, localTime(12, 0)), false);
+
+  const allDay = settings({ refreshWindowStart: "08:30", refreshWindowEnd: "08:30" });
+  assert.equal(isRefreshWindowActive(allDay, localTime(3, 0)), true);
+  assert.equal(nextAutomaticRefreshDelay(allDay, localTime(3, 0)), 300_000);
+});
+
+test("automatic refresh waits until the configured daily start time", async () => {
+  const calls = [];
+  const scheduled = [];
+  const now = localTime(6, 30);
+  const manager = new ProviderManager({
+    settingsStore: new FakeSettingsStore(settings({
+      refreshWindowStart: "07:00",
+      refreshWindowEnd: "23:00",
+      providers: {
+        codex: { enabled: true },
+        openrouter: { enabled: false, apiKey: "", mode: "key" },
+      },
+    })),
+    providers: [{
+      id: "codex",
+      displayName: "Codex",
+      bridgeCompatible: true,
+      collect: async () => {
+        calls.push("codex");
+        return codexSnapshot(now);
+      },
+    }],
+    now: () => now,
+    setTimeout: (callback, delayMs) => {
+      const timer = { callback, delayMs, unref() {} };
+      scheduled.push(timer);
+      return timer;
+    },
+    clearTimeout: () => {},
+  });
+
+  assert.deepEqual(await manager.start(), {});
+  assert.deepEqual(calls, []);
+  assert.equal(scheduled.at(-1).delayMs, 30 * 60 * 1_000);
+
+  await manager.pollNow("codex", { manual: true });
+  assert.deepEqual(calls, ["codex"]);
+  assert.equal(scheduled.at(-1).delayMs, 30 * 60 * 1_000);
+  await manager.stop();
+});
+
+test("the last daytime interval is clamped to the end of the refresh window", () => {
+  const configured = settings({
+    pollIntervalSeconds: 300,
+    refreshWindowStart: "07:00",
+    refreshWindowEnd: "23:00",
+  });
+  assert.equal(nextAutomaticRefreshDelay(configured, localTime(22, 58)), 120_000);
+});
 
 function codexSnapshot(updatedAt) {
   const bridgePayload = {

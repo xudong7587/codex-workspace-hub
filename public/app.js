@@ -319,10 +319,24 @@
 
     const pollInterval = toFiniteNumber(settings.pollIntervalSeconds, 300);
     const staleAfter = toFiniteNumber(settings.staleAfterSeconds, 900);
+    const refreshWindowStart = typeof settings.refreshWindowStart === "string"
+      ? settings.refreshWindowStart
+      : "00:00";
+    const refreshWindowEnd = typeof settings.refreshWindowEnd === "string"
+      ? settings.refreshWindowEnd
+      : "00:00";
     byId("pollIntervalSeconds").value = String(pollInterval);
     byId("staleAfterSeconds").value = String(staleAfter);
+    byId("refreshWindowStart").value = refreshWindowStart;
+    byId("refreshWindowEnd").value = refreshWindowEnd;
     byId("hubPollInterval").textContent = formatDuration(pollInterval);
     byId("hubStaleInterval").textContent = formatDuration(staleAfter);
+    const refreshWindowLabel = refreshWindowStart === refreshWindowEnd
+      ? "全天"
+      : `${refreshWindowStart}–${refreshWindowEnd}`;
+    byId("hubRefreshWindow").textContent = state.schedule?.active === false
+      ? `${refreshWindowLabel}（暂停中）`
+      : refreshWindowLabel;
     byId("providerCount").textContent = String(providers.length);
     byId("hubMemoryUsage").textContent = state.runtime && Number.isFinite(Number(state.runtime.rssBytes))
       ? formatBytes(Number(state.runtime.rssBytes))
@@ -952,6 +966,8 @@
     event.preventDefault();
     const pollIntervalSeconds = Number(byId("pollIntervalSeconds").value);
     const staleAfterSeconds = Number(byId("staleAfterSeconds").value);
+    const refreshWindowStart = byId("refreshWindowStart").value;
+    const refreshWindowEnd = byId("refreshWindowEnd").value;
     if (!Number.isInteger(pollIntervalSeconds) || pollIntervalSeconds < 60 || pollIntervalSeconds > 86400) {
       setFormMessage("settingsMessage", "刷新间隔必须是 60 到 86400 秒之间的整数。", "error");
       byId("pollIntervalSeconds").focus();
@@ -967,6 +983,14 @@
       byId("staleAfterSeconds").focus();
       return;
     }
+    const clockPattern = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
+    if (!clockPattern.test(refreshWindowStart) || !clockPattern.test(refreshWindowEnd)) {
+      setFormMessage("settingsMessage", "请选择有效的自动刷新开始和结束时间。", "error");
+      (!clockPattern.test(refreshWindowStart)
+        ? byId("refreshWindowStart")
+        : byId("refreshWindowEnd")).focus();
+      return;
+    }
 
     const button = byId("saveSettingsButton");
     setButtonBusy(button, true, "正在保存");
@@ -974,7 +998,12 @@
     try {
       await api("/admin/api/settings", {
         method: "PUT",
-        body: { pollIntervalSeconds, staleAfterSeconds }
+        body: {
+          pollIntervalSeconds,
+          staleAfterSeconds,
+          refreshWindowStart,
+          refreshWindowEnd
+        }
       });
       setFormMessage("settingsMessage", "刷新设置已保存。", "success");
       await loadState();

@@ -157,6 +157,10 @@
                       <dd id="hubStaleInterval">15 分钟</dd>
                     </div>
                     <div>
+                      <dt>自动刷新时段</dt>
+                      <dd id="hubRefreshWindow">全天</dd>
+                    </div>
+                    <div>
                       <dt>连接器总数</dt>
                       <dd id="providerCount">0</dd>
                     </div>
@@ -204,7 +208,7 @@
                   <p class="eyebrow">调度</p>
                   <h2 id="settingsTitle">刷新设置</h2>
                 </div>
-                <p>默认每 5 分钟读取一次。适当延长间隔可以减少资源消耗和上游请求。</p>
+                <p>设置刷新间隔和每天自动读取额度的时段，减少空闲时的上游请求。</p>
               </div>
               <form class="surface settings-form" id="settingsForm" novalidate>
                 <div class="form-grid">
@@ -223,6 +227,16 @@
                       <span>秒</span>
                     </div>
                     <p class="field-help">建议至少为刷新间隔的 2 倍。</p>
+                  </div>
+                  <div class="field">
+                    <label for="refreshWindowStart">自动刷新开始时间</label>
+                    <input id="refreshWindowStart" name="refreshWindowStart" type="time" step="60" required>
+                    <p class="field-help">按 Hub 所在设备的本地时间。</p>
+                  </div>
+                  <div class="field">
+                    <label for="refreshWindowEnd">自动刷新结束时间</label>
+                    <input id="refreshWindowEnd" name="refreshWindowEnd" type="time" step="60" required>
+                    <p class="field-help">相同表示全天；结束早于开始表示跨午夜。</p>
                   </div>
                 </div>
                 <div class="form-actions">
