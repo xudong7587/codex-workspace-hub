@@ -357,6 +357,7 @@
     setBadge(byId("hubStatusBadge"), hubStatus);
     updateTopStatus(hubStatus.text === "正常" ? "Hub 正常运行" : `Hub ${hubStatus.text}`, hubStatus.topState);
 
+    renderCoreQuotaDock(providers);
     renderBridge(bridge, providers);
     renderProviders(providers);
   }
@@ -376,6 +377,76 @@
       return { text: "部分异常", badgeClass: "badge-warning", topState: "busy" };
     }
     return statusDescriptor("ok");
+  }
+
+  function renderCoreQuotaDock(providers) {
+    const dock = byId("coreQuotaDock");
+    const list = byId("coreQuotaList");
+    const connected = providers.filter((provider) => (
+      provider.enabled && provider.configured && !providerNeedsConnection(provider)
+    ));
+    list.replaceChildren();
+    dock.hidden = connected.length === 0;
+    if (connected.length === 0) return;
+
+    const healthy = connected.filter((provider) => !provider.error && isHealthyStatus(provider.status));
+    byId("coreQuotaSummary").textContent = healthy.length === connected.length
+      ? `${connected.length} 个连接 · 数据正常`
+      : `${healthy.length}/${connected.length} 个连接正常`;
+
+    for (const provider of connected) {
+      const card = document.createElement("a");
+      card.className = "core-quota-card";
+      card.href = provider.id === "codex" || provider.id === "openrouter"
+        ? `#provider-${provider.id}`
+        : "#providers";
+      const descriptor = statusDescriptor(provider.status, provider.configured);
+      if (provider.error || isErrorStatus(provider.status)) {
+        card.classList.add("is-error");
+      } else if (!isHealthyStatus(provider.status)) {
+        card.classList.add("is-warning");
+      }
+
+      const heading = document.createElement("div");
+      heading.className = "core-quota-card-heading";
+      const identity = document.createElement("div");
+      const name = document.createElement("strong");
+      name.textContent = provider.displayName || provider.id;
+      const account = document.createElement("span");
+      account.textContent = provider.accountLabel || "已连接";
+      identity.append(name, account);
+      const status = document.createElement("span");
+      status.className = "core-quota-status";
+      status.textContent = provider.error ? "异常" : descriptor.text;
+      heading.append(identity, status);
+
+      const metrics = document.createElement("div");
+      metrics.className = "core-quota-metrics";
+      const rows = extractMetricRows(provider.metrics).slice(0, 3);
+      if (rows.length === 0) {
+        const empty = document.createElement("p");
+        empty.className = "core-quota-empty";
+        empty.textContent = provider.error || "等待首次额度数据";
+        metrics.append(empty);
+      } else {
+        for (const row of rows) {
+          const item = document.createElement("div");
+          const label = document.createElement("span");
+          label.textContent = row.label;
+          const value = document.createElement("strong");
+          value.textContent = row.value;
+          item.append(label, value);
+          metrics.append(item);
+        }
+      }
+
+      const updated = document.createElement("small");
+      updated.textContent = provider.updatedAt
+        ? `更新于 ${formatDateTime(provider.updatedAt)}`
+        : "尚未获得额度";
+      card.append(heading, metrics, updated);
+      list.append(card);
+    }
   }
 
   function renderBridge(bridge, providers) {
@@ -431,7 +502,7 @@
     const config = provider.config && typeof provider.config === "object" ? provider.config : {};
     byId(`${id}DisplayName`).textContent = provider.displayName || provider.id;
     byId(`${id}Enabled`).checked = Boolean(provider.enabled);
-    const codexNeedsLogin = id === "codex" && !provider.updatedAt && /尚未登录/.test(String(provider.error || ""));
+    const codexNeedsLogin = providerNeedsConnection(provider);
     const configured = Boolean(provider.configured) && !codexNeedsLogin;
     byId(`${id}Configured`).textContent = configured ? "凭据已配置" : id === "codex" ? "需要登录" : "需要配置";
     byId(`${id}UpdatedAt`).textContent = provider.updatedAt ? `更新于 ${formatDateTime(provider.updatedAt)}` : "尚未更新";
@@ -466,6 +537,12 @@
       byId("openrouterClearKeyButton").hidden = !provider.configured;
       updateOpenRouterKeyHelp();
     }
+  }
+
+  function providerNeedsConnection(provider) {
+    return String(provider?.id || "").toLowerCase() === "codex"
+      && !provider.updatedAt
+      && /尚未登录/.test(String(provider.error || ""));
   }
 
   function createGenericProviderCard(provider) {
@@ -558,6 +635,11 @@
 
   function isErrorStatus(status) {
     return ["error", "failed", "unavailable", "offline"].includes(String(status || "").toLowerCase());
+  }
+
+  function isHealthyStatus(status) {
+    return ["ok", "healthy", "success", "connected", "ready", "available"]
+      .includes(String(status || "").toLowerCase());
   }
 
   function renderMetrics(container, metrics, status) {

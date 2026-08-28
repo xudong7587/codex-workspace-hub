@@ -101,6 +101,17 @@
         <main class="content" id="mainContent" tabindex="-1">
           <div class="global-alert" id="globalAlert" role="status" aria-live="polite" hidden></div>
 
+          <section class="core-quota-dock" id="coreQuotaDock" aria-labelledby="coreQuotaTitle" hidden>
+            <div class="core-quota-heading">
+              <div>
+                <p class="section-kicker">Pinned</p>
+                <h2 id="coreQuotaTitle">已连接 AI</h2>
+              </div>
+              <span id="coreQuotaSummary">等待额度数据</span>
+            </div>
+            <div class="core-quota-list" id="coreQuotaList"></div>
+          </section>
+
           <section class="loading-state" id="loadingState" aria-label="正在加载">
             <div class="skeleton skeleton-title"></div>
             <div class="skeleton-grid">

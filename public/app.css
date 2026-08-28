@@ -648,7 +648,7 @@ input[type="checkbox"] {
 
 .global-alert {
   position: sticky;
-  z-index: 25;
+  z-index: 40;
   top: 88px;
   margin-bottom: 18px;
   padding: 12px 15px;
@@ -657,6 +657,182 @@ input[type="checkbox"] {
   background: var(--surface-raised);
   box-shadow: var(--shadow-float);
   color: var(--text-soft);
+}
+
+.core-quota-dock {
+  position: sticky;
+  z-index: 28;
+  top: 84px;
+  margin: 0 0 28px;
+  padding: 14px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  border-radius: 24px;
+  background: var(--surface-glass);
+  box-shadow: var(--shadow-float), inset 0 1px 0 rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+}
+
+.core-quota-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 0 4px 10px;
+}
+
+.core-quota-heading > div {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.core-quota-heading .section-kicker,
+.core-quota-heading h2 {
+  margin-bottom: 0;
+}
+
+.core-quota-heading h2 {
+  font-size: 17px;
+  letter-spacing: -0.02em;
+}
+
+.core-quota-heading > span {
+  color: var(--text-faint);
+  font-size: 11px;
+  font-weight: 720;
+}
+
+.core-quota-list {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+}
+
+.core-quota-list::-webkit-scrollbar {
+  display: none;
+}
+
+.core-quota-card {
+  flex: 1 0 280px;
+  min-width: 0;
+  padding: 13px 15px;
+  border: 1px solid var(--border);
+  border-radius: 17px;
+  background: var(--surface-raised);
+  color: var(--text);
+  text-decoration: none;
+  box-shadow: var(--shadow-small);
+  scroll-snap-align: start;
+  transition: transform 160ms var(--ease-out), border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.core-quota-card.is-error {
+  border-color: rgba(166, 63, 63, 0.35);
+  background: linear-gradient(135deg, var(--surface-raised), var(--danger-soft));
+}
+
+.core-quota-card.is-warning {
+  background: linear-gradient(135deg, var(--surface-raised), var(--warning-soft));
+}
+
+.core-quota-card:active {
+  transform: scale(0.985);
+}
+
+.core-quota-card-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.core-quota-card-heading > div {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.core-quota-card-heading strong {
+  overflow: hidden;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.core-quota-card-heading span,
+.core-quota-card > small {
+  color: var(--text-faint);
+  font-size: 10px;
+}
+
+.core-quota-status {
+  flex: 0 0 auto;
+  color: var(--success) !important;
+  font-weight: 760;
+}
+
+.core-quota-card.is-error .core-quota-status {
+  color: var(--danger) !important;
+}
+
+.core-quota-card.is-warning .core-quota-status {
+  color: var(--warning) !important;
+}
+
+.core-quota-metrics {
+  display: flex;
+  gap: 18px;
+  margin: 10px 0 7px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.core-quota-metrics::-webkit-scrollbar {
+  display: none;
+}
+
+.core-quota-metrics > div {
+  display: grid;
+  min-width: max-content;
+  gap: 1px;
+}
+
+.core-quota-metrics span {
+  color: var(--text-faint);
+  font-size: 10px;
+}
+
+.core-quota-metrics strong {
+  color: var(--text);
+  font-size: 14px;
+  letter-spacing: -0.02em;
+}
+
+.core-quota-empty {
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-faint);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.core-quota-card.is-error .core-quota-empty {
+  color: var(--danger);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .core-quota-card:hover {
+    border-color: var(--border-strong);
+    box-shadow: var(--shadow-card);
+    transform: translateY(-1px);
+  }
 }
 
 .global-alert.is-success {
@@ -672,7 +848,7 @@ input[type="checkbox"] {
 }
 
 .page-section {
-  scroll-margin-top: 104px;
+  scroll-margin-top: 248px;
 }
 
 .page-section + .page-section {
@@ -1366,6 +1542,21 @@ input[type="checkbox"] {
     padding: 28px 16px 72px;
   }
 
+  .core-quota-dock {
+    top: 74px;
+    margin-bottom: 22px;
+    padding: 11px;
+    border-radius: 20px;
+  }
+
+  .core-quota-heading {
+    padding: 0 3px 9px;
+  }
+
+  .core-quota-card {
+    flex-basis: min(320px, 88%);
+  }
+
   .page-heading {
     margin-top: 14px;
   }
@@ -1453,6 +1644,15 @@ input[type="checkbox"] {
     grid-template-columns: 1fr;
   }
 
+  .core-quota-heading > div {
+    gap: 7px;
+  }
+
+  .core-quota-heading > span {
+    max-width: 42%;
+    text-align: right;
+  }
+
   .heading-facts > div + div {
     border-top: 1px solid var(--border);
     border-left: 0;
@@ -1486,6 +1686,7 @@ input[type="checkbox"] {
   .login-panel,
   .shell-header,
   .sidebar-nav,
+  .core-quota-dock,
   .surface,
   .heading-facts {
     background: var(--surface);

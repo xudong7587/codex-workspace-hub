@@ -85,7 +85,9 @@ test("admin shell is served with strict browser security headers", async () => {
     assert.match(response.headers.get("content-type"), /^text\/html\b/);
     assert.match(response.headers.get("content-security-policy"), /frame-ancestors 'none'/);
     assert.equal(response.headers.get("x-frame-options"), "DENY");
-    assert.match(await response.text(), /VWatch Quota Hub/);
+    const body = await response.text();
+    assert.match(body, /VWatch Quota Hub/);
+    assert.match(body, /id="coreQuotaDock"/);
   });
 });
 
