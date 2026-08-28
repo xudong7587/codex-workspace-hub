@@ -2,10 +2,12 @@ import { spawn as nodeSpawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { createInterface } from "node:readline";
 
+import { APP_VERSION } from "./version.js";
+
 const DEFAULT_CLIENT_INFO = Object.freeze({
   name: "vwatch-quota-hub",
   title: "VWatch Quota Hub",
-  version: "0.2.0",
+  version: APP_VERSION,
 });
 
 export class CodexAppServerError extends Error {

@@ -10,6 +10,7 @@ const STRONG_ADMIN_TOKEN = "92782f5b6f4a4ad48996caa94d0dc0f1bc8e621ec4d0f407a1d9
 test("loadConfig defaults to the APK Token Monitor port 17321", () => {
   const config = loadConfig({});
   assert.equal(config.port, 17_321);
+  assert.equal(config.manualRefreshCooldownMs, 5_000);
 });
 
 test("loadConfig derives the Codex home from a custom data directory", () => {

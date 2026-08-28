@@ -1,3 +1,5 @@
+import { APP_VERSION } from "./version.js";
+
 function clone(value) {
   return structuredClone(value);
 }
@@ -97,7 +99,7 @@ export class ProviderManager {
     this.now = options.now || Date.now;
     this.setTimeout = options.setTimeout || globalThis.setTimeout;
     this.clearTimeout = options.clearTimeout || globalThis.clearTimeout;
-    this.manualRefreshCooldownMs = options.manualRefreshCooldownMs ?? 60_000;
+    this.manualRefreshCooldownMs = options.manualRefreshCooldownMs ?? 5_000;
     this.failureRetryBaseMs = options.failureRetryBaseMs ?? 60_000;
     this.settings = null;
     this.initializePromise = null;
@@ -382,6 +384,7 @@ export class ProviderManager {
     }
     return {
       productName: "VWatch Quota Hub",
+      version: APP_VERSION,
       settings: {
         pollIntervalSeconds: this.settings.pollIntervalSeconds,
         staleAfterSeconds: this.settings.staleAfterSeconds,

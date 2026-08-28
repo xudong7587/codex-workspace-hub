@@ -302,10 +302,11 @@ export function createAdminApi(options = {}) {
         return result(409, { error: "setup_complete", message: error.message });
       }
       if (error?.code === "REFRESH_COOLDOWN") {
+        const retryAfterSeconds = error.retryAfterSeconds || 5;
         return result(
           429,
-          { error: "refresh_cooldown", message: "手动刷新过于频繁" },
-          { "Retry-After": String(error.retryAfterSeconds || 60) },
+          { error: "refresh_cooldown", message: `请等待 ${retryAfterSeconds} 秒后再手动刷新` },
+          { "Retry-After": String(retryAfterSeconds) },
         );
       }
       if (error instanceof AdminApiError) {

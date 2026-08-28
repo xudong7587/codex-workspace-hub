@@ -11,7 +11,7 @@ const DEFAULTS = Object.freeze({
   codexHome: join(DEFAULT_DATA_DIR, "providers", "codex"),
   codexBin: "codex",
   providerRequestTimeoutMs: 15_000,
-  manualRefreshCooldownMs: 60_000,
+  manualRefreshCooldownMs: 5_000,
   requestTimeoutMs: 15_000,
   startTimeoutMs: 15_000,
   stopTimeoutMs: 2_000,

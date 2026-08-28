@@ -3,6 +3,8 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { mkdir, open, readFile, rename, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
+import { APP_VERSION } from "./version.js";
+
 const DEFAULT_AUTH_BASE_URL = "https://auth.openai.com";
 const DEFAULT_CHATGPT_BASE_URL = "https://chatgpt.com/backend-api";
 const DEFAULT_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
@@ -287,7 +289,7 @@ export class CodexDirectClient extends EventEmitter {
     if (!auth?.tokens?.access_token) throw new Error("Codex is not logged in");
     auth = await this.#ensureFreshAuth(auth);
     let response = await this.#fetchUsage(auth);
-    if (response.status === 401 && auth?.tokens?.refresh_token) {
+    if ([401, 403].includes(response.status) && auth?.tokens?.refresh_token) {
       auth = await this.#refreshAuth(auth);
       response = await this.#fetchUsage(auth);
     }
@@ -308,14 +310,14 @@ export class CodexDirectClient extends EventEmitter {
   async #fetchUsage(auth) {
     const id = accountId(auth);
     if (!id) throw new Error("Codex account id is missing; sign in again");
-    return this.#fetch(`${this.chatgptBaseUrl}/codex/usage`, {
+    return this.#fetch(`${this.chatgptBaseUrl}/wham/usage`, {
       headers: {
         Accept: "application/json",
         Authorization: `Bearer ${auth.tokens.access_token}`,
         "ChatGPT-Account-Id": id,
         "OAI-Product-Sku": "codex",
         originator: "vwatch_quota_hub",
-        "User-Agent": "vwatch-quota-hub/0.4",
+        "User-Agent": `vwatch-quota-hub/${APP_VERSION}`,
       },
     });
   }

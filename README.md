@@ -16,7 +16,7 @@ Codex 已支持完整额度链路；DeepSeek 继续由手机端处理。Hub 直�
 docker compose up -d
 ```
 
-不需要 `.env`，也不需要手工生成任何 Key。Compose 会直接拉取 GitHub Container Registry 中公开的 amd64 镜像。
+不需要 `.env`，也不需要手工生成任何 Key。Compose 会直接拉取 GitHub Container Registry 中公开的 amd64 `latest` 镜像；运行版本会显示在管理面板左上角。
 
 Compose 已按绿联 NAS 设置 `PUID=1000`、`PGID=10`。
 

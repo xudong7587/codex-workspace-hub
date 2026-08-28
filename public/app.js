@@ -324,6 +324,10 @@
     const bridge = state.bridge && typeof state.bridge === "object" ? state.bridge : {};
     const providers = Array.isArray(state.providers) ? state.providers.filter(isProvider) : [];
 
+    byId("appVersion").textContent = typeof state.version === "string" && state.version
+      ? `v${state.version}`
+      : "未知版本";
+
     const pollInterval = toFiniteNumber(settings.pollIntervalSeconds, 300);
     const staleAfter = toFiniteNumber(settings.staleAfterSeconds, 900);
     const refreshWindowStart = typeof settings.refreshWindowStart === "string"

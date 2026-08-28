@@ -230,6 +230,7 @@ test("manual refresh cooldown is exposed as 429 with Retry-After", async () => {
   );
   assert.equal(response.statusCode, 429);
   assert.equal(response.payload.error, "refresh_cooldown");
+  assert.equal(response.payload.message, "请等待 41 秒后再手动刷新");
   assert.equal(response.headers["Retry-After"], "41");
 });
 

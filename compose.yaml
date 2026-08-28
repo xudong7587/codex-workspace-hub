@@ -1,6 +1,6 @@
 services:
   quota-hub:
-    image: ghcr.io/xudong7587/vwatch-quota-hub:stable
+    image: ghcr.io/xudong7587/vwatch-quota-hub:latest
     pull_policy: always
     restart: unless-stopped
     init: true
@@ -9,6 +9,7 @@ services:
       HOST: 0.0.0.0
       PORT: 17321
       POLL_INTERVAL_SECONDS: 300
+      MANUAL_REFRESH_COOLDOWN_MS: 5000
       STALE_AFTER_SECONDS: 900
       LOG_LEVEL: info
       TZ: Asia/Shanghai

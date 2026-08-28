@@ -93,7 +93,7 @@ test("CodexDirectClient completes device login and reads quota without a Codex b
         refresh_token: "refresh-token",
       });
     }
-    if (String(url).endsWith("/backend-api/codex/usage")) {
+    if (String(url).endsWith("/backend-api/wham/usage")) {
       assert.equal(init.headers.Authorization, `Bearer ${accessToken}`);
       assert.equal(init.headers["ChatGPT-Account-Id"], "account-123");
       return jsonResponse({
@@ -156,7 +156,7 @@ test("CodexDirectClient refreshes an expiring access token before quota polling"
       });
       return jsonResponse({ access_token: "fresh-access", refresh_token: "fresh-refresh" });
     }
-    if (String(url).endsWith("/backend-api/codex/usage")) {
+    if (String(url).endsWith("/backend-api/wham/usage")) {
       assert.equal(init.headers.Authorization, "Bearer fresh-access");
       return jsonResponse({
         rate_limit: {
@@ -173,6 +173,62 @@ test("CodexDirectClient refreshes an expiring access token before quota polling"
   const stored = JSON.parse(await readFile(join(codexHome, "auth.json"), "utf8"));
   assert.equal(stored.tokens.access_token, "fresh-access");
   assert.equal(stored.tokens.refresh_token, "fresh-refresh");
+  await client.stop();
+});
+
+test("CodexDirectClient refreshes account claims once after a usage 403", async () => {
+  const codexHome = await mkdtemp(join(tmpdir(), "vwatch-codex-claims-refresh-"));
+  const now = 1_800_000_000_000;
+  await writeFile(join(codexHome, "auth.json"), JSON.stringify({
+    auth_mode: "chatgpt",
+    tokens: {
+      id_token: jwt({
+        "https://api.openai.com/auth": { chatgpt_account_id: "account-renewed" },
+      }),
+      access_token: jwt({ exp: 1_900_000_000 }),
+      refresh_token: "renewed-refresh-token",
+      account_id: "account-renewed",
+    },
+  }));
+
+  let usageCalls = 0;
+  let refreshCalls = 0;
+  const client = new CodexDirectClient({
+    codexHome,
+    now: () => now,
+    fetchImpl: async (url, init = {}) => {
+      if (String(url).endsWith("/oauth/token")) {
+        refreshCalls += 1;
+        assert.deepEqual(JSON.parse(init.body), {
+          client_id: CODEX_OAUTH_CLIENT_ID,
+          grant_type: "refresh_token",
+          refresh_token: "renewed-refresh-token",
+        });
+        return jsonResponse({ access_token: "renewed-access-token" });
+      }
+      if (String(url).endsWith("/backend-api/wham/usage")) {
+        usageCalls += 1;
+        if (usageCalls === 1) return jsonResponse({ error: "forbidden" }, 403);
+        assert.equal(init.headers.Authorization, "Bearer renewed-access-token");
+        return jsonResponse({
+          rate_limit: {
+            primary_window: {
+              used_percent: 18,
+              limit_window_seconds: 18_000,
+              reset_at: 1_800_000_100,
+            },
+          },
+        });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    },
+  });
+
+  await client.start();
+  const limits = await client.request("account/rateLimits/read");
+  assert.equal(limits.rateLimitsByLimitId.codex.primary.usedPercent, 18);
+  assert.equal(refreshCalls, 1);
+  assert.equal(usageCalls, 2);
   await client.stop();
 });
 
@@ -194,7 +250,7 @@ test("CodexDirectClient retries transient and incomplete usage responses", async
   let usageCalls = 0;
   const delays = [];
   const fetchImpl = async (url) => {
-    assert.match(String(url), /\/backend-api\/codex\/usage$/);
+    assert.match(String(url), /\/backend-api\/wham\/usage$/);
     usageCalls += 1;
     if (usageCalls === 1) {
       return jsonResponse({ error: "temporarily unavailable" }, 503);
