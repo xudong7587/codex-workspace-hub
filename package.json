@@ -1,6 +1,6 @@
 {
   "name": "vwatch-quota-hub",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "private": true,
   "description": "A dependency-free multi-provider AI quota hub for VWatch.",
   "type": "module",

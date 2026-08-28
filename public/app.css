@@ -30,6 +30,8 @@
   --radius-card: 24px;
   --radius-panel: 30px;
   --content-width: 1240px;
+  --quota-rail-width: 320px;
+  --workspace-gap: 24px;
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --font: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei UI", "PingFang SC", sans-serif;
 }
@@ -535,7 +537,7 @@ input[type="checkbox"] {
 
 .header-inner {
   display: flex;
-  width: min(100%, calc(var(--content-width) + 64px));
+  width: min(100%, calc(var(--content-width) + var(--quota-rail-width) + var(--workspace-gap) + 64px));
   min-height: 104px;
   align-items: center;
   justify-content: space-between;
@@ -640,10 +642,19 @@ input[type="checkbox"] {
   color: var(--text);
 }
 
-.content {
-  width: min(100%, calc(var(--content-width) + 64px));
+.workspace-layout {
+  display: grid;
+  width: min(100%, calc(var(--content-width) + var(--quota-rail-width) + var(--workspace-gap) + 64px));
+  grid-template-columns: minmax(0, var(--content-width)) var(--quota-rail-width);
+  align-items: start;
+  gap: var(--workspace-gap);
   margin: 0 auto;
   padding: 38px 32px 100px;
+}
+
+.content {
+  width: 100%;
+  min-width: 0;
 }
 
 .global-alert {
@@ -662,9 +673,10 @@ input[type="checkbox"] {
 .core-quota-dock {
   position: sticky;
   z-index: 28;
-  top: 84px;
-  margin: 0 0 28px;
-  padding: 14px;
+  top: 20px;
+  max-height: calc(100vh - 40px);
+  max-height: calc(100dvh - 40px);
+  padding: 16px;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.8);
   border-radius: 24px;
@@ -675,17 +687,15 @@ input[type="checkbox"] {
 }
 
 .core-quota-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  padding: 0 4px 10px;
+  display: grid;
+  gap: 7px;
+  padding: 0 3px 13px;
 }
 
 .core-quota-heading > div {
   display: flex;
   align-items: baseline;
-  gap: 10px;
+  gap: 8px;
 }
 
 .core-quota-heading .section-kicker,
@@ -705,11 +715,12 @@ input[type="checkbox"] {
 }
 
 .core-quota-list {
-  display: flex;
+  display: grid;
   gap: 10px;
-  overflow-x: auto;
-  overscroll-behavior-inline: contain;
-  scroll-snap-type: x proximity;
+  max-height: calc(100vh - 132px);
+  max-height: calc(100dvh - 132px);
+  overflow-y: auto;
+  overscroll-behavior-block: contain;
   scrollbar-width: none;
 }
 
@@ -718,7 +729,7 @@ input[type="checkbox"] {
 }
 
 .core-quota-card {
-  flex: 1 0 280px;
+  width: 100%;
   min-width: 0;
   padding: 13px 15px;
   border: 1px solid var(--border);
@@ -786,11 +797,10 @@ input[type="checkbox"] {
 }
 
 .core-quota-metrics {
-  display: flex;
-  gap: 18px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 14px;
   margin: 10px 0 7px;
-  overflow-x: auto;
-  scrollbar-width: none;
 }
 
 .core-quota-metrics::-webkit-scrollbar {
@@ -799,7 +809,7 @@ input[type="checkbox"] {
 
 .core-quota-metrics > div {
   display: grid;
-  min-width: max-content;
+  min-width: 0;
   gap: 1px;
 }
 
@@ -1481,6 +1491,54 @@ input[type="checkbox"] {
   pointer-events: none;
 }
 
+@media (max-width: 1180px) {
+  .workspace-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .content {
+    order: 2;
+  }
+
+  .core-quota-dock {
+    position: relative;
+    top: auto;
+    order: 1;
+    max-height: none;
+  }
+
+  .core-quota-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+  }
+
+  .core-quota-list {
+    display: flex;
+    max-height: none;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-inline: contain;
+    scroll-snap-type: x proximity;
+  }
+
+  .core-quota-card {
+    flex: 1 0 280px;
+  }
+
+  .core-quota-metrics {
+    display: flex;
+    gap: 18px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .core-quota-metrics > div {
+    min-width: max-content;
+  }
+}
+
 @media (max-width: 900px) {
   .header-inner {
     align-items: flex-start;
@@ -1538,13 +1596,15 @@ input[type="checkbox"] {
     font-size: 12px;
   }
 
-  .content {
+  .workspace-layout {
     padding: 28px 16px 72px;
   }
 
+  .content {
+    padding: 0;
+  }
+
   .core-quota-dock {
-    top: 74px;
-    margin-bottom: 22px;
     padding: 11px;
     border-radius: 20px;
   }
