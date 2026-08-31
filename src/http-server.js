@@ -133,7 +133,18 @@ export function createGatewayServer(input, maybeOptions = {}) {
           return;
         }
         const result = await handleCollectorApi(request, pathname);
-        writeJson(request, response, result.statusCode, result.payload, result.headers);
+        if (result.body !== undefined) {
+          writeBody(
+            request,
+            response,
+            result.statusCode,
+            result.body,
+            result.contentType || "application/octet-stream",
+            result.headers,
+          );
+        } else {
+          writeJson(request, response, result.statusCode, result.payload, result.headers);
+        }
         return;
       }
 

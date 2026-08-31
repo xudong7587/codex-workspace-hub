@@ -33,13 +33,18 @@ namespace CodexWorkspaceCollector {
         };
         private int usageRunning, syncRunning, syncPending;
         private string lastScheduledSlot = "";
+        private readonly SynchronizationContext uiContext;
+        private SyncProgressForm progressForm;
+        private SyncProgressInfo lastProgress = new SyncProgressInfo { Status = "complete", Phase = "等待同步", Percent = 0, WorkspacePercent = 0, Message = "尚未开始" };
         private static readonly string LogPath = Path.Combine(CollectorConfig.DataDirectory, "collector.log");
 
         public CollectorContext() {
+            uiContext = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
             config = CollectorConfig.Load();
             ContextMenuStrip menu = new ContextMenuStrip();
             menu.Items.Add("立即采集额度", null, delegate { QueueUsage(true); });
             menu.Items.Add("立即同步项目", null, delegate { QueueSync(true, "手动"); });
+            menu.Items.Add("同步进度", null, delegate { ShowProgress(); });
             menu.Items.Add("设置", null, delegate { ShowSettings(); });
             menu.Items.Add("打开备份目录", null, delegate { OpenPath(Path.Combine(CollectorConfig.DataDirectory, "ConversationBackups")); });
             menu.Items.Add("查看日志", null, delegate { OpenPath(LogPath); });
@@ -77,7 +82,7 @@ namespace CodexWorkspaceCollector {
         }
 
         private void SetupWatchers() {
-            foreach (SyncFolder folder in config.Folders ?? new List<SyncFolder>()) if (folder != null && Directory.Exists(folder.Path)) AddWatcher(folder.Path, "项目变化", true);
+            foreach (SyncFolder folder in config.Folders ?? new List<SyncFolder>()) if (folder != null && folder.Enabled && folder.Direction != "download" && Directory.Exists(folder.Path)) AddWatcher(folder.Path, "项目变化", true);
             if (config.BackupConversations) {
                 string codex = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".codex");
                 foreach (string name in new [] { "sessions", "archived_sessions" }) {
@@ -155,20 +160,41 @@ namespace CodexWorkspaceCollector {
         private void QueueSync(bool notify, string reason) {
             if (!config.IsReady()) return;
             if (Interlocked.Exchange(ref syncRunning, 1) != 0) { Interlocked.Exchange(ref syncPending, 1); return; }
+            if (notify) uiContext.Post(delegate { ShowProgress(); }, null);
             ThreadPool.QueueUserWorkItem(delegate {
+                HubClient hub = null;
                 try {
                     CollectorConfig snapshot = CollectorConfig.Load();
-                    SyncEngine.SyncConfigured(snapshot, new HubClient(snapshot), Log);
+                    hub = new HubClient(snapshot);
+                    SyncEngine.SyncConfigured(snapshot, hub, Log, UpdateProgress);
                     Log("同步完成（" + reason + "）");
                     if (notify) Balloon("项目与对话同步完成", ToolTipIcon.Info);
                 } catch (Exception error) {
                     Log("同步失败（" + reason + "）：" + error.Message);
+                    UpdateProgress(new SyncProgressInfo { Status = "error", Phase = "同步失败", WorkspaceId = lastProgress.WorkspaceId, WorkspaceName = lastProgress.WorkspaceName,
+                        CurrentFile = lastProgress.CurrentFile, Percent = lastProgress.Percent, WorkspacePercent = lastProgress.WorkspacePercent, Message = error.Message });
+                    if (hub != null) hub.ReportProgress(new Dictionary<string, object> { { "deviceId", config.DeviceId }, { "workspaceId", String.IsNullOrWhiteSpace(lastProgress.WorkspaceId) ? "all" : lastProgress.WorkspaceId },
+                        { "status", "error" }, { "phase", "同步失败" }, { "percent", lastProgress.WorkspacePercent }, { "currentFile", lastProgress.CurrentFile ?? "" }, { "message", error.Message } }, true);
                     if (notify) Balloon("同步失败：" + Short(error.Message, 180), ToolTipIcon.Error);
                 } finally {
                     Interlocked.Exchange(ref syncRunning, 0);
                     if (Interlocked.Exchange(ref syncPending, 0) != 0) QueueSync(false, "合并的待处理变化");
                 }
             });
+        }
+
+        private void ShowProgress() {
+            if (progressForm == null || progressForm.IsDisposed) progressForm = new SyncProgressForm();
+            progressForm.UpdateProgress(lastProgress);
+            if (!progressForm.Visible) progressForm.Show();
+            progressForm.Activate();
+        }
+
+        private void UpdateProgress(SyncProgressInfo info) {
+            lastProgress = info;
+            SyncProgressForm form = progressForm;
+            if (form == null || form.IsDisposed) return;
+            try { form.BeginInvoke(new Action(delegate { if (!form.IsDisposed) form.UpdateProgress(info); })); } catch { }
         }
 
         private void Balloon(string text, ToolTipIcon icon) {
@@ -201,13 +227,13 @@ namespace CodexWorkspaceCollector {
         }
     }
 
-    internal sealed class SettingsForm : Form {
+    internal sealed class LegacySettingsForm : Form {
         private readonly TextBox hub = new TextBox(), key = new TextBox(), device = new TextBox(), interval = new TextBox(), rate = new TextBox(), folders = new TextBox(), quiet = new TextBox(), syncTimes = new TextBox();
         private readonly ComboBox syncMode = new ComboBox();
         private readonly CheckBox sync = new CheckBox(), chats = new CheckBox(), startup = new CheckBox();
         public CollectorConfig Value { get; private set; }
 
-        public SettingsForm(CollectorConfig current) {
+        public LegacySettingsForm(CollectorConfig current) {
             Text = "Codex Workspace Collector 设置"; Width = 720; Height = 780; MinimumSize = new Size(660, 700); StartPosition = FormStartPosition.CenterScreen;
             AutoScaleMode = AutoScaleMode.Dpi; AutoScaleDimensions = new SizeF(96F, 96F); DoubleBuffered = true;
             Font = new Font("Microsoft YaHei UI", 10F); BackColor = Color.FromArgb(242, 247, 244);

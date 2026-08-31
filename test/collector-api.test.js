@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -86,5 +87,65 @@ test("collector endpoints require the bridge key", async () => {
   await withServer(async (baseUrl) => {
     const response = await post(baseUrl, "/api/collector/v1/usage", {}, "wrong");
     assert.equal(response.status, 403);
+  });
+});
+
+test("collector progress exposes a device before its first workspace commit", async () => {
+  await withServer(async (baseUrl, usageStore, syncStore) => {
+    const response = await post(baseUrl, "/api/collector/v1/sync/progress", {
+      deviceId: "new-laptop", workspaceId: "first-project", status: "running", phase: "扫描本机差异", percent: 8,
+    });
+    assert.equal(response.status, 200);
+    const summary = await syncStore.getSummary();
+    assert.deepEqual(summary.devices.map((device) => device.id), ["new-laptop"]);
+  });
+});
+
+test("collector protocol v2 transfers blobs in small chunks and publishes progress", async () => {
+  await withServer(async (baseUrl, usageStore, syncStore) => {
+    const encrypted = Buffer.alloc(900_000);
+    for (let index = 0; index < encrypted.length; index += 1) encrypted[index] = index % 251;
+    const object = createHash("sha256").update(encrypted).digest("hex");
+    let offset = 0;
+    while (offset < encrypted.length) {
+      const chunk = encrypted.subarray(offset, Math.min(offset + 512 * 1024, encrypted.length));
+      const response = await fetch(`${baseUrl}/api/collector/v1/sync/blob?workspaceId=project-a&object=${object}&offset=${offset}&total=${encrypted.length}`, {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${SECRET}`, "Content-Type": "application/octet-stream" },
+        body: chunk,
+      });
+      assert.equal(response.status, 200);
+      offset += chunk.length;
+    }
+    const commit = await post(baseUrl, "/api/collector/v1/sync/push", {
+      workspaceId: "project-a", deviceId: "office-pc",
+      files: [{ path: "src/app.js", hash: "c".repeat(64), baseRevision: 0, size: 880_000, object }],
+    });
+    assert.equal(commit.status, 200);
+    const metadata = await post(baseUrl, "/api/collector/v1/sync/pull", { workspaceId: "project-a", sinceRevision: 0, metadataOnly: true });
+    const metadataBody = await metadata.json();
+    assert.equal(metadataBody.files[0].object, object);
+    assert.equal(metadataBody.files[0].blob, undefined);
+    const received = [];
+    offset = 0;
+    while (offset < encrypted.length) {
+      const response = await fetch(`${baseUrl}/api/collector/v1/sync/blob?workspaceId=project-a&object=${object}&offset=${offset}&limit=${512 * 1024}`, {
+        headers: { Authorization: `Bearer ${SECRET}` },
+      });
+      assert.equal(response.status, 200);
+      assert.equal(Number(response.headers.get("x-cw-total-bytes")), encrypted.length);
+      const chunk = Buffer.from(await response.arrayBuffer());
+      received.push(chunk);
+      offset += chunk.length;
+    }
+    assert.deepEqual(Buffer.concat(received), encrypted);
+    const progress = await post(baseUrl, "/api/collector/v1/sync/progress", {
+      deviceId: "office-pc", workspaceId: "project-a", status: "running", phase: "上传本机更新", percent: 63,
+      completedFiles: 3, totalFiles: 8, currentFile: "src/app.js",
+    });
+    assert.equal(progress.status, 200);
+    const summary = await syncStore.getSummary();
+    assert.equal(summary.activities[0].percent, 63);
+    assert.equal(summary.activities[0].deviceId, "office-pc");
   });
 });

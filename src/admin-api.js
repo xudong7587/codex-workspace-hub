@@ -226,6 +226,13 @@ export function createAdminApi(options = {}) {
         return result(200, await adminState());
       }
 
+      if (pathname === "/admin/api/sync") {
+        if (request.method !== "GET" && request.method !== "HEAD") {
+          return result(405, { error: "method_not_allowed" }, { Allow: "GET, HEAD" });
+        }
+        return result(200, await syncStore?.getSummary?.() || null);
+      }
+
       if (credentialStore && pathname === "/admin/api/bridge/rotate") {
         if (request.method !== "POST") {
           return result(405, { error: "method_not_allowed" }, { Allow: "POST" });

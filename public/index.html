@@ -253,8 +253,9 @@
                   <ol>
                     <li>下载并运行单文件采集器，不需要安装 Node.js 或 Python。</li>
                     <li>填写 CW HTTPS 地址、连接 Key，并为这台电脑命名。</li>
-                    <li>添加项目目录；同一项目在不同电脑使用相同的同步名称。</li>
-                    <li>在采集器里选择智能、定时或手动同步。策略只属于当前 PC。</li>
+                    <li>扫描项目后逐项勾选；同一项目在不同电脑使用相同的同步名称。</li>
+                    <li>每个项目选择双向、仅上传或仅下载；不同电脑可以选择不同项目。</li>
+                    <li>选择智能、定时或手动同步。项目清单和策略都只属于当前 PC。</li>
                   </ol>
                   <a class="button button-primary" href="https://github.com/xudong7587/codex-workspace-hub/releases/latest/download/CodexWorkspaceCollector.exe">下载 Windows 采集器</a>
                 </div>
@@ -268,6 +269,15 @@
                   <p>连接 Key 同时用于鉴权和客户端加密派生。不要发给不受信任的设备。</p>
                 </dl>
               </div>
+              <article class="surface sync-activity-panel" aria-live="polite">
+                <div class="surface-heading">
+                  <div><p class="section-kicker">Live transfer</p><h3>当前同步进度</h3></div>
+                  <span class="badge badge-neutral" id="syncActivityBadge">等待任务</span>
+                </div>
+                <div class="sync-activity-list" id="syncActivityList">
+                  <p class="empty-metric">采集器开始同步后，这里会实时显示每台电脑和工作区的进度。</p>
+                </div>
+              </article>
               <div class="sync-console-grid">
                 <article class="surface sync-console-card">
                   <div class="surface-heading"><div><p class="section-kicker">Devices</p><h3>连接设备</h3></div><span class="badge badge-neutral" id="deviceCountBadge">0 台</span></div>
@@ -291,7 +301,7 @@
               <div class="strategy-steps">
                 <article class="surface strategy-card"><span>01</span><h3>感知变化</h3><p>只把文件事件当作同步信号，不在每次写入时立刻上传。</p></article>
                 <article class="surface strategy-card"><span>02</span><h3>等待静默</h3><p>默认 90 秒无新变化才比较差异；运行中的对话 JSONL 至少稳定 120 秒。</p></article>
-                <article class="surface strategy-card"><span>03</span><h3>加密提交</h3><p>客户端加密后推送；冲突保留副本，不传播删除，不上传常见密钥。</p></article>
+                <article class="surface strategy-card"><span>03</span><h3>按项目和方向提交</h3><p>只处理本机勾选项目；可双向、仅上传或仅下载，冲突保留副本。</p></article>
                 <article class="surface strategy-card"><span>04</span><h3>定时兜底</h3><p>每天多个可配置时间补查遗漏，网络恢复后也重新安排同步。</p></article>
               </div>
             </section>

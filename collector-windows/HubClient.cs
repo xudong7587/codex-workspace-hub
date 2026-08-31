@@ -7,35 +7,105 @@ using System.Web.Script.Serialization;
 
 namespace CodexWorkspaceCollector {
     public sealed class HubClient {
+        public const int BlobChunkBytes = 512 * 1024;
         private readonly CollectorConfig config;
         private readonly JavaScriptSerializer json = new JavaScriptSerializer { MaxJsonLength = 32 * 1024 * 1024 };
+        private DateTime lastProgressAt = DateTime.MinValue;
+        private string lastProgressKey = "";
 
         public HubClient(CollectorConfig config) { this.config = config; }
 
         public Dictionary<string, object> Post(string path, object body) {
+            byte[] bytes = Encoding.UTF8.GetBytes(json.Serialize(body));
+            HttpWebRequest request = CreateRequest(path, "POST", "application/json; charset=utf-8", "application/json");
+            request.ContentLength = bytes.Length;
+            using (Stream stream = request.GetRequestStream()) stream.Write(bytes, 0, bytes.Length);
+            return ReadJson(request);
+        }
+
+        public Dictionary<string, object> PutBlobChunk(string workspaceId, string objectId, long offset, long totalBytes, byte[] value, int count) {
+            string path = "/api/collector/v1/sync/blob?workspaceId=" + Escape(workspaceId)
+                + "&object=" + Escape(objectId) + "&offset=" + offset + "&total=" + totalBytes;
+            HttpWebRequest request = CreateRequest(path, "PUT", "application/octet-stream", "application/json");
+            request.ContentLength = count;
+            using (Stream stream = request.GetRequestStream()) stream.Write(value, 0, count);
+            return ReadJson(request);
+        }
+
+        public byte[] GetBlobChunk(string workspaceId, string objectId, long offset, int limit, out long totalBytes) {
+            string path = "/api/collector/v1/sync/blob?workspaceId=" + Escape(workspaceId)
+                + "&object=" + Escape(objectId) + "&offset=" + offset + "&limit=" + limit;
+            HttpWebRequest request = CreateRequest(path, "GET", null, "application/octet-stream");
+            try {
+                using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())
+                using (MemoryStream output = new MemoryStream()) {
+                    string total = response.Headers["X-CW-Total-Bytes"];
+                    if (!Int64.TryParse(total, out totalBytes)) totalBytes = response.ContentLength;
+                    using (Stream input = response.GetResponseStream()) input.CopyTo(output);
+                    return output.ToArray();
+                }
+            } catch (WebException error) { throw RequestError(error); }
+        }
+
+        public void ReportProgress(Dictionary<string, object> progress, bool force) {
+            string key = Convert.ToString(progress.ContainsKey("status") ? progress["status"] : "") + ":"
+                + Convert.ToString(progress.ContainsKey("phase") ? progress["phase"] : "") + ":"
+                + Convert.ToString(progress.ContainsKey("percent") ? progress["percent"] : "");
+            if (!force && key == lastProgressKey && DateTime.UtcNow - lastProgressAt < TimeSpan.FromSeconds(2)) return;
+            if (!force && DateTime.UtcNow - lastProgressAt < TimeSpan.FromMilliseconds(800)) return;
+            lastProgressAt = DateTime.UtcNow; lastProgressKey = key;
+            try { Post("/api/collector/v1/sync/progress", progress); } catch { }
+        }
+
+        private HttpWebRequest CreateRequest(string path, string method, string contentType, string accept) {
             ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
             string root = config.HubUrl.Trim().TrimEnd('/');
             HttpWebRequest request = (HttpWebRequest)WebRequest.Create(root + path);
-            request.Method = "POST";
-            request.ContentType = "application/json; charset=utf-8";
-            request.Accept = "application/json";
-            request.Timeout = 30000;
-            request.ReadWriteTimeout = 30000;
+            request.Method = method;
+            if (!String.IsNullOrEmpty(contentType)) request.ContentType = contentType;
+            request.Accept = accept;
+            request.Timeout = 45000;
+            request.ReadWriteTimeout = 45000;
+            request.KeepAlive = true;
             request.Headers[HttpRequestHeader.Authorization] = "Bearer " + config.Key;
-            byte[] bytes = Encoding.UTF8.GetBytes(json.Serialize(body));
-            request.ContentLength = bytes.Length;
-            using (Stream stream = request.GetRequestStream()) stream.Write(bytes, 0, bytes.Length);
+            return request;
+        }
+
+        private Dictionary<string, object> ReadJson(HttpWebRequest request) {
             try {
                 using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())
                 using (StreamReader reader = new StreamReader(response.GetResponseStream(), Encoding.UTF8)) {
                     return json.Deserialize<Dictionary<string, object>>(reader.ReadToEnd());
                 }
-            } catch (WebException error) {
-                HttpWebResponse response = error.Response as HttpWebResponse;
-                string detail = "";
-                if (response != null) using (StreamReader reader = new StreamReader(response.GetResponseStream(), Encoding.UTF8)) detail = reader.ReadToEnd();
-                throw new InvalidOperationException("Hub 请求失败" + (response == null ? "" : " HTTP " + (int)response.StatusCode) + (detail.Length == 0 ? "" : ": " + detail));
-            }
+            } catch (WebException error) { throw RequestError(error); }
         }
+
+        private static Exception RequestError(WebException error) {
+            HttpWebResponse response = error.Response as HttpWebResponse;
+            if (response == null) return new InvalidOperationException("无法连接 CW，请检查网络、HTTPS 地址与证书。", error);
+            string detail = "";
+            try { using (StreamReader reader = new StreamReader(response.GetResponseStream(), Encoding.UTF8)) detail = reader.ReadToEnd(); } catch { }
+            int status = (int)response.StatusCode;
+            string contentType = response.ContentType ?? "";
+            if (status == 502 || status == 504) return new InvalidOperationException("CW 反向代理返回 HTTP " + status + "。新版会自动分块传输；若仍出现，请检查代理超时和上传限制。");
+            string message = ExtractMessage(detail);
+            if (String.IsNullOrWhiteSpace(message) && contentType.IndexOf("html", StringComparison.OrdinalIgnoreCase) >= 0) message = "反向代理返回了网页错误";
+            return new InvalidOperationException("CW 请求失败 HTTP " + status + (String.IsNullOrWhiteSpace(message) ? "" : "：" + message));
+        }
+
+        private static string ExtractMessage(string body) {
+            if (String.IsNullOrWhiteSpace(body)) return "";
+            string trimmed = body.Trim();
+            if (trimmed.StartsWith("<", StringComparison.Ordinal)) return "";
+            try {
+                Dictionary<string, object> value = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(trimmed);
+                object raw;
+                if (value != null && value.TryGetValue("message", out raw)) return Convert.ToString(raw);
+                if (value != null && value.TryGetValue("error", out raw)) return Convert.ToString(raw);
+            } catch { }
+            return trimmed.Length > 240 ? trimmed.Substring(0, 240) : trimmed;
+        }
+
+        private static string Escape(string value) { return Uri.EscapeDataString(value ?? ""); }
     }
 }

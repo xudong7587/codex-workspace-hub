@@ -27,6 +27,7 @@
   let codexLoginStartedAt = 0;
   let codexLoginGeneration = 0;
   let codexLoginId = null;
+  let syncPolling = false;
 
   const byId = (id) => document.getElementById(id);
 
@@ -591,6 +592,7 @@
 
   function findLatestSyncActivity(usage, sync) {
     const values = [usage?.capturedAt];
+    for (const activity of Array.isArray(sync?.activities) ? sync.activities : []) values.push(activity?.updatedAt);
     for (const workspace of Array.isArray(sync?.workspaces) ? sync.workspaces : []) values.push(workspace?.updatedAt);
     for (const device of Array.isArray(sync?.devices) ? sync.devices : []) values.push(device?.lastSeenAt);
     const timestamps = values.map((value) => Date.parse(value || "")).filter(Number.isFinite);
@@ -598,6 +600,7 @@
   }
 
   function renderSyncConsole(usage, sync) {
+    renderSyncActivities(sync);
     const devices = mergeCollectorDevices(usage, sync);
     const deviceList = byId("deviceList");
     deviceList.replaceChildren();
@@ -619,6 +622,7 @@
     }
 
     const workspaces = Array.isArray(sync?.workspaces) ? sync.workspaces : [];
+    const activities = Array.isArray(sync?.activities) ? sync.activities : [];
     const workspaceList = byId("workspaceList"); workspaceList.replaceChildren();
     byId("workspaceCountBadge").textContent = `${toFiniteNumber(sync?.workspaceCount, 0)} 个项目`;
     if (!workspaces.length) {
@@ -631,9 +635,62 @@
       const title = document.createElement("strong"); title.textContent = workspace.id;
       const meta = document.createElement("small"); meta.textContent = `${workspace.fileCount || 0} 个文件 · ${formatBytes(Number(workspace.totalBytes) || 0)} · r${workspace.revision || 0}`;
       copy.append(title, meta);
-      const time = document.createElement("span"); time.className = "entity-status"; time.textContent = workspace.updatedAt ? formatDateTime(workspace.updatedAt) : "等待数据";
+      const active = activities.find((item) => item?.workspaceId === workspace.id && item?.status === "running");
+      if (active) {
+        const track = document.createElement("span"); track.className = "entity-inline-progress";
+        const fill = document.createElement("i"); fill.style.width = `${Math.max(0, Math.min(100, Number(active.percent) || 0))}%`; track.append(fill); copy.append(track);
+      }
+      const time = document.createElement("span"); time.className = `entity-status ${active ? "is-online" : ""}`; time.textContent = active ? `${active.percent || 0}%` : (workspace.updatedAt ? formatDateTime(workspace.updatedAt) : "等待数据");
       row.append(mark, copy, time); workspaceList.append(row);
     }
+  }
+
+  function renderSyncActivities(sync) {
+    const activities = Array.isArray(sync?.activities) ? sync.activities : [];
+    const list = byId("syncActivityList");
+    if (!list) return;
+    list.replaceChildren();
+    const running = activities.filter((item) => item?.status === "running");
+    const errors = activities.filter((item) => item?.status === "error");
+    const badge = byId("syncActivityBadge");
+    if (running.length) setBadge(badge, { text: `${running.length} 项传输中`, badgeClass: "badge-success", topState: "ok" });
+    else if (errors.length) setBadge(badge, { text: `${errors.length} 项异常`, badgeClass: "badge-danger", topState: "error" });
+    else setBadge(badge, { text: activities.length ? "最近已完成" : "等待任务", badgeClass: "badge-neutral", topState: "" });
+    if (!activities.length) {
+      const empty = document.createElement("p"); empty.className = "empty-metric";
+      empty.textContent = "采集器开始同步后，这里会实时显示每台电脑和工作区的进度。"; list.append(empty); return;
+    }
+    for (const activity of activities.slice(0, 10)) {
+      const row = document.createElement("article"); row.className = `sync-progress-row is-${activity.status || "running"}`;
+      const heading = document.createElement("div"); heading.className = "sync-progress-heading";
+      const identity = document.createElement("div");
+      const title = document.createElement("strong"); title.textContent = `${activity.deviceId || "设备"} · ${activity.workspaceId || "工作区"}`;
+      const phase = document.createElement("small"); phase.textContent = activity.phase || "同步中"; identity.append(title, phase);
+      const value = document.createElement("b"); value.textContent = `${Math.max(0, Math.min(100, Number(activity.percent) || 0))}%`;
+      heading.append(identity, value);
+      const track = document.createElement("div"); track.className = "sync-progress-track";
+      const fill = document.createElement("span"); fill.style.width = `${Math.max(0, Math.min(100, Number(activity.percent) || 0))}%`; track.append(fill);
+      const meta = document.createElement("div"); meta.className = "sync-progress-meta";
+      const message = document.createElement("span"); message.textContent = activity.currentFile || activity.message || "等待下一阶段";
+      const counts = document.createElement("span");
+      counts.textContent = activity.totalFiles > 0 ? `${activity.completedFiles || 0}/${activity.totalFiles} 个文件` : (activity.updatedAt ? formatDateTime(activity.updatedAt) : "");
+      meta.append(message, counts); row.append(heading, track, meta); list.append(row);
+    }
+  }
+
+  async function pollSyncProgress() {
+    if (syncPolling || !currentState || resolvePage() !== "devices") return;
+    syncPolling = true;
+    try {
+      const sync = await api("/admin/api/sync");
+      currentState.sync = sync && typeof sync === "object" ? sync : {};
+      renderSyncConsole(currentState.usage, currentState.sync);
+      byId("syncProjectCount").textContent = `${toFiniteNumber(currentState.sync.workspaceCount, 0)} 个`;
+      byId("syncFileCount").textContent = `${toFiniteNumber(currentState.sync.fileCount, 0)} 个`;
+      byId("syncStorage").textContent = formatBytes(toFiniteNumber(currentState.sync.totalBytes, 0));
+    } catch (error) {
+      if (error.isAuthError) { clearToken(); showLogin("管理会话已过期，请重新登录。", "error"); }
+    } finally { syncPolling = false; }
   }
 
   function formatTokenCount(value) {
@@ -1747,12 +1804,13 @@
         if (link.hash === window.location.hash) renderPage({ scrollToTop: true });
       });
     });
-    window.addEventListener("hashchange", () => renderPage({ scrollToTop: true }));
+    window.addEventListener("hashchange", () => { renderPage({ scrollToTop: true }); void pollSyncProgress(); });
   }
 
   async function initialize() {
     applyTheme(getStoredTheme());
     bindEvents();
+    window.setInterval(() => { void pollSyncProgress(); }, 1500);
     try {
       const setup = await publicApi("/admin/api/setup");
       if (setup.setupRequired) {

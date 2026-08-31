@@ -11,7 +11,9 @@ namespace CodexWorkspaceCollector {
     public sealed class SyncFolder {
         public string WorkspaceId { get; set; }
         public string Path { get; set; }
-        public SyncFolder() { WorkspaceId = "project"; Path = ""; }
+        public bool Enabled { get; set; }
+        public string Direction { get; set; }
+        public SyncFolder() { WorkspaceId = "project"; Path = ""; Enabled = true; Direction = "both"; }
     }
 
     [Serializable]
@@ -73,6 +75,14 @@ namespace CodexWorkspaceCollector {
                     value.ProtectedKey = Protect(legacyKey, Entropy);
                 }
                 if (value.Folders == null) value.Folders = new List<SyncFolder>();
+                string rawConfiguration = File.ReadAllText(sourcePath, Encoding.UTF8);
+                bool legacyFolders = rawConfiguration.IndexOf("\"Enabled\"", StringComparison.OrdinalIgnoreCase) < 0;
+                foreach (SyncFolder folder in value.Folders) {
+                    if (folder == null) continue;
+                    if (legacyFolders) folder.Enabled = true;
+                    if (String.IsNullOrWhiteSpace(folder.Direction)) folder.Direction = "both";
+                    if (folder.Direction != "both" && folder.Direction != "upload" && folder.Direction != "download") folder.Direction = "both";
+                }
                 if (value.IntervalMinutes < 1) value.IntervalMinutes = 5;
                 if (String.IsNullOrWhiteSpace(value.SyncMode)) value.SyncMode = "smart";
                 if (value.SyncMode != "smart" && value.SyncMode != "scheduled" && value.SyncMode != "manual") value.SyncMode = "smart";
