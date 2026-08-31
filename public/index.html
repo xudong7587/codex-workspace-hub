@@ -387,9 +387,49 @@
                 <p class="section-kicker">Live</p>
                 <h2 id="coreQuotaTitle">额度数据</h2>
               </div>
-              <span id="coreQuotaSummary">等待额度数据</span>
+              <div class="core-quota-actions">
+                <span id="coreQuotaSummary">等待额度数据</span>
+                <button class="button button-quiet button-small" id="coreQuotaRefreshButton" type="button">
+                  立即刷新
+                </button>
+              </div>
             </div>
             <div class="core-quota-list" id="coreQuotaList"></div>
+            <section class="usage-history" aria-labelledby="usageHistoryTitle">
+              <div class="usage-history-heading">
+                <div>
+                  <p class="section-kicker">Tokens</p>
+                  <h3 id="usageHistoryTitle">用量历史</h3>
+                </div>
+                <small id="usageHistorySource">尚未导入</small>
+              </div>
+              <div class="usage-period-list">
+                <div class="usage-period">
+                  <span>今日</span>
+                  <strong id="usageDayTokens">—</strong>
+                  <small id="usageDayValue">API 等价价值 —</small>
+                </div>
+                <div class="usage-period">
+                  <span>本月</span>
+                  <strong id="usageMonthTokens">—</strong>
+                  <small id="usageMonthValue">API 等价价值 —</small>
+                </div>
+                <div class="usage-period">
+                  <span>累计</span>
+                  <strong id="usageTotalTokens">—</strong>
+                  <small id="usageTotalValue">API 等价价值 —</small>
+                </div>
+              </div>
+              <div class="usage-import-controls">
+                <label for="usageUsdCnyRate">
+                  美元兑人民币
+                  <input id="usageUsdCnyRate" type="number" min="1" max="20" step="0.01" value="7.20">
+                </label>
+                <button class="button button-quiet button-small" id="usageImportButton" type="button">导入统计</button>
+                <input id="usageImportFile" type="file" accept="application/json,.json" hidden>
+              </div>
+              <p class="usage-history-note">选择 Token Monitor 的 collector-anchor.json；金额是按模型 API 单价折算的参考价值，并非订阅账单。</p>
+            </section>
           </aside>
         </div>
       </div>

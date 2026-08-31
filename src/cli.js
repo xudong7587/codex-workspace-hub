@@ -15,6 +15,7 @@ import { ProviderManager } from "./provider-manager.js";
 import { createCodexProvider } from "./providers/codex.js";
 import { createOpenRouterProvider } from "./providers/openrouter.js";
 import { SettingsStore, defaultRuntimeSettings } from "./settings-store.js";
+import { UsageStore } from "./usage-store.js";
 
 function line(stream, value = "") {
   stream.write(`${value}\n`);
@@ -110,6 +111,7 @@ export function createRuntime(config, options = {}) {
     encryptionSecret: options.credentialStore?.getEncryptionSecret() || config.adminToken,
     defaults: defaultRuntimeSettings(config),
   });
+  const usageStore = options.usageStore || new UsageStore({ dataDir: config.dataDir });
   const codexProvider = options.codexProvider || createCodexProvider({
     clientFactory,
     timeoutMs: config.loginTimeoutMs,
@@ -128,6 +130,7 @@ export function createRuntime(config, options = {}) {
     logger,
     clientFactory,
     settingsStore,
+    usageStore,
     providerManager,
     quotaService: providerManager,
   };
@@ -147,12 +150,14 @@ export async function runServe(config, options = {}) {
   validateServeConfig(config);
   const credentialStore = await initializeCredentialStore(config, options);
   const runtimeOptions = { ...options, credentialStore };
-  const { logger, providerManager } = createRuntime(config, runtimeOptions);
+  const { logger, providerManager, usageStore } = createRuntime(config, runtimeOptions);
+  await usageStore.initialize?.();
   await providerManager.initialize?.();
   const server = options.server || createGatewayServer({
     config,
     providerManager,
     credentialStore,
+    usageStore,
     logger,
   });
   await startGatewayServer(server, config);

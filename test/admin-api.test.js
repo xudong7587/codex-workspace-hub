@@ -249,6 +249,36 @@ test("global refresh runs the manager once for all enabled providers", async () 
   );
 });
 
+test("usage history import is authenticated and returned with admin state", async () => {
+  let stored = null;
+  const usageStore = {
+    get: () => stored,
+    async replace(value) {
+      stored = structuredClone(value);
+      return stored;
+    },
+  };
+  const handle = createAdminApi({
+    providerManager: createManager(),
+    adminToken: ADMIN_TOKEN,
+    usageStore,
+  });
+  const period = { totalTokens: 123, costUsd: 0.5 };
+  const response = await handle(request({
+    method: "PUT",
+    token: ADMIN_TOKEN,
+    body: {
+      capturedAt: "2026-08-31T08:00:00.000Z",
+      usdCnyRate: 7.2,
+      periods: { day: period, month: period, total: period },
+    },
+  }), "/admin/api/usage");
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.payload.usage.periods.day.totalTokens, 123);
+  assert.equal(stored.usdCnyRate, 7.2);
+});
+
 test("Codex login route starts device flow and refreshes once after completion", async () => {
   const manager = createManager();
   const handle = createAdminApi({ providerManager: manager, adminToken: ADMIN_TOKEN });

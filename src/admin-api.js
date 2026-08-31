@@ -98,6 +98,7 @@ export function createAdminApi(options = {}) {
   const providerManager = options.providerManager;
   const adminToken = options.adminToken || "";
   const credentialStore = options.credentialStore || null;
+  const usageStore = options.usageStore || null;
   const logger = options.logger || null;
   if (!providerManager) throw new TypeError("createAdminApi requires providerManager");
   let refreshedLoginId = null;
@@ -131,9 +132,13 @@ export function createAdminApi(options = {}) {
   };
   const adminState = () => {
     const state = providerManager.getAdminState();
-    if (!credentialStore) return state;
-    return {
+    const enriched = {
       ...state,
+      usage: usageStore?.get?.() || null,
+    };
+    if (!credentialStore) return enriched;
+    return {
+      ...enriched,
       bridge: {
         ...(state.bridge || {}),
         secret: credentialStore.getBridgeSecret(),
@@ -240,6 +245,18 @@ export function createAdminApi(options = {}) {
           return result(405, { error: "method_not_allowed" }, { Allow: "POST" });
         }
         await providerManager.pollNow(null, { manual: true });
+        return result(200, adminState());
+      }
+
+      if (pathname === "/admin/api/usage") {
+        if (request.method !== "PUT") {
+          return result(405, { error: "method_not_allowed" }, { Allow: "PUT" });
+        }
+        if (!usageStore?.replace) {
+          return result(501, { error: "usage_store_unavailable", message: "用量历史存储未启用" });
+        }
+        const body = await readJsonBody(request);
+        await usageStore.replace(body);
         return result(200, adminState());
       }
 

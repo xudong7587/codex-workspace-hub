@@ -93,6 +93,7 @@ export function createGatewayServer(input, maybeOptions = {}) {
   const config = options.config || options;
   const providerManager = options.providerManager || options.quotaService;
   const credentialStore = options.credentialStore || null;
+  const usageStore = options.usageStore || null;
   const logger = options.logger || null;
   const bridgeSecret = () => credentialStore?.getBridgeSecret()
     || config.tokenMonitorSecret
@@ -104,6 +105,7 @@ export function createGatewayServer(input, maybeOptions = {}) {
     providerManager,
     adminToken: config.adminToken,
     credentialStore,
+    usageStore,
     logger,
   });
 

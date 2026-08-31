@@ -677,13 +677,18 @@ input[type="checkbox"] {
   max-height: calc(100vh - 40px);
   max-height: calc(100dvh - 40px);
   padding: 16px;
-  overflow: hidden;
+  overflow-y: auto;
+  scrollbar-width: none;
   border: 1px solid rgba(255, 255, 255, 0.8);
   border-radius: 24px;
   background: var(--surface-glass);
   box-shadow: var(--shadow-float), inset 0 1px 0 rgba(255, 255, 255, 0.78);
   backdrop-filter: blur(24px) saturate(140%);
   -webkit-backdrop-filter: blur(24px) saturate(140%);
+}
+
+.core-quota-dock::-webkit-scrollbar {
+  display: none;
 }
 
 .core-quota-heading {
@@ -714,6 +719,25 @@ input[type="checkbox"] {
   font-weight: 720;
 }
 
+.core-quota-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.core-quota-actions > span {
+  color: var(--text-faint);
+  font-size: 11px;
+  font-weight: 720;
+}
+
+.core-quota-actions .button {
+  min-height: 30px;
+  padding: 6px 10px;
+  font-size: 11px;
+}
+
 .core-quota-list {
   display: grid;
   gap: 10px;
@@ -726,6 +750,116 @@ input[type="checkbox"] {
 
 .core-quota-list::-webkit-scrollbar {
   display: none;
+}
+
+.usage-history {
+  margin-top: 12px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 17px;
+  background: linear-gradient(145deg, var(--surface-raised), var(--accent-soft));
+  box-shadow: var(--shadow-small);
+}
+
+.usage-history-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.usage-history-heading .section-kicker,
+.usage-history-heading h3 {
+  margin: 0;
+}
+
+.usage-history-heading h3 {
+  margin-top: 2px;
+  font-size: 15px;
+}
+
+.usage-history-heading > small {
+  max-width: 56%;
+  color: var(--text-faint);
+  font-size: 9px;
+  line-height: 1.45;
+  text-align: right;
+}
+
+.usage-period-list {
+  display: grid;
+  gap: 7px;
+}
+
+.usage-period {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  align-items: baseline;
+  gap: 4px 8px;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--surface-raised) 86%, transparent);
+}
+
+.usage-period > span {
+  grid-row: 1 / span 2;
+  color: var(--text-soft);
+  font-size: 11px;
+  font-weight: 760;
+}
+
+.usage-period > strong {
+  overflow: hidden;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.usage-period > small {
+  color: var(--success);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.usage-import-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.usage-import-controls label {
+  display: grid;
+  gap: 4px;
+  color: var(--text-faint);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.usage-import-controls input {
+  width: 100%;
+  min-height: 30px;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface-raised);
+  color: var(--text);
+}
+
+.usage-import-controls .button {
+  min-height: 30px;
+  padding: 6px 10px;
+  font-size: 11px;
+}
+
+.usage-history-note {
+  margin: 9px 1px 0;
+  color: var(--text-faint);
+  font-size: 9px;
+  line-height: 1.5;
 }
 
 .core-quota-card {
@@ -1708,8 +1842,13 @@ input[type="checkbox"] {
     gap: 7px;
   }
 
-  .core-quota-heading > span {
+  .core-quota-actions {
     max-width: 42%;
+    margin-left: auto;
+    justify-content: flex-end;
+  }
+
+  .core-quota-actions > span {
     text-align: right;
   }
 

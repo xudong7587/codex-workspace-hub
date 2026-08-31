@@ -8,6 +8,8 @@
 
 Codex 已支持完整额度链路；DeepSeek 继续由手机端处理。Hub 直接完成 Codex 登录和额度查询，不再内置庞大的 Codex CLI。默认每 5 分钟刷新，也可在管理面板限制每天的自动刷新时段；镜像和常驻内存都控制在几十 MiB。
 
+右侧额度面板可直接手动刷新。若要查看今日、本月和累计 token 及人民币 API 等价价值，在“用量历史”中选择 Token Monitor 数据目录里的 `collector-anchor.json` 即可导入；汇率可在导入前调整。该金额是按模型 API 单价折算的参考值，不是 ChatGPT/Codex 订阅账单。
+
 ## 部署
 
 下载仓库里的 [`compose.yaml`](compose.yaml)，放到 NAS 的任意空目录，然后运行：
