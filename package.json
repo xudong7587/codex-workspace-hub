@@ -1,6 +1,6 @@
 {
-  "name": "vwatch-quota-hub",
-  "version": "0.8.1",
+  "name": "codex-workspace-hub",
+  "version": "0.9.0",
   "private": true,
   "description": "A lightweight multi-device Codex workspace, conversation backup, and quota hub.",
   "type": "module",
@@ -8,7 +8,7 @@
     "node": ">=20"
   },
   "bin": {
-    "vwatch-quota-hub": "./src/cli.js"
+    "codex-workspace-hub": "./src/cli.js"
   },
   "exports": {
     "./config": "./src/config.js",

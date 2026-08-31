@@ -56,7 +56,7 @@ test("mapCodexUsageResponse converts the official usage endpoint shape", () => {
 });
 
 test("CodexDirectClient completes device login and reads quota without a Codex binary", async () => {
-  const codexHome = await mkdtemp(join(tmpdir(), "vwatch-codex-direct-"));
+  const codexHome = await mkdtemp(join(tmpdir(), "cw-codex-direct-"));
   const now = 1_800_000_000_000;
   const idToken = jwt({
     exp: 1_900_000_000,
@@ -132,7 +132,7 @@ test("CodexDirectClient completes device login and reads quota without a Codex b
 });
 
 test("CodexDirectClient refreshes an expiring access token before quota polling", async () => {
-  const codexHome = await mkdtemp(join(tmpdir(), "vwatch-codex-refresh-"));
+  const codexHome = await mkdtemp(join(tmpdir(), "cw-codex-refresh-"));
   const now = 1_800_000_000_000;
   const idToken = jwt({
     "https://api.openai.com/auth": { chatgpt_account_id: "account-refresh" },
@@ -177,7 +177,7 @@ test("CodexDirectClient refreshes an expiring access token before quota polling"
 });
 
 test("CodexDirectClient refreshes account claims once after a usage 403", async () => {
-  const codexHome = await mkdtemp(join(tmpdir(), "vwatch-codex-claims-refresh-"));
+  const codexHome = await mkdtemp(join(tmpdir(), "cw-codex-claims-refresh-"));
   const now = 1_800_000_000_000;
   await writeFile(join(codexHome, "auth.json"), JSON.stringify({
     auth_mode: "chatgpt",
@@ -233,7 +233,7 @@ test("CodexDirectClient refreshes account claims once after a usage 403", async 
 });
 
 test("CodexDirectClient retries transient and incomplete usage responses", async () => {
-  const codexHome = await mkdtemp(join(tmpdir(), "vwatch-codex-retry-"));
+  const codexHome = await mkdtemp(join(tmpdir(), "cw-codex-retry-"));
   const now = 1_800_000_000_000;
   await writeFile(join(codexHome, "auth.json"), JSON.stringify({
     auth_mode: "chatgpt",
@@ -283,7 +283,7 @@ test("CodexDirectClient retries transient and incomplete usage responses", async
 });
 
 test("CodexDirectClient does not retry a permanent authorization failure", async () => {
-  const codexHome = await mkdtemp(join(tmpdir(), "vwatch-codex-auth-failure-"));
+  const codexHome = await mkdtemp(join(tmpdir(), "cw-codex-auth-failure-"));
   await writeFile(join(codexHome, "auth.json"), JSON.stringify({
     auth_mode: "chatgpt",
     tokens: {
@@ -314,7 +314,7 @@ test("CodexDirectClient does not retry a permanent authorization failure", async
 });
 
 test("stopping CodexDirectClient cancels an in-progress retry backoff", async () => {
-  const codexHome = await mkdtemp(join(tmpdir(), "vwatch-codex-stop-retry-"));
+  const codexHome = await mkdtemp(join(tmpdir(), "cw-codex-stop-retry-"));
   await writeFile(join(codexHome, "auth.json"), JSON.stringify({
     auth_mode: "chatgpt",
     tokens: {

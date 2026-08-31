@@ -7,7 +7,7 @@ import test from "node:test";
 import { CredentialStore } from "../src/credential-store.js";
 
 async function withTemporaryDirectory(run) {
-  const directory = await mkdtemp(join(tmpdir(), "vwatch-credentials-"));
+  const directory = await mkdtemp(join(tmpdir(), "cw-credentials-"));
   try {
     return await run(directory);
   } finally {

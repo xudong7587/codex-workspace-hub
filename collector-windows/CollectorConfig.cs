@@ -6,7 +6,7 @@ using System.Text;
 using System.Web.Script.Serialization;
 using Microsoft.Win32;
 
-namespace VWatchCollector {
+namespace CodexWorkspaceCollector {
     [Serializable]
     public sealed class SyncFolder {
         public string WorkspaceId { get; set; }
@@ -49,15 +49,29 @@ namespace VWatchCollector {
         }
 
         public static readonly string DataDirectory = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VWatchCollector");
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CodexWorkspaceCollector");
         public static readonly string ConfigPath = Path.Combine(DataDirectory, "config.json");
-        private static readonly byte[] Entropy = Encoding.UTF8.GetBytes("VWatchCollector.Config.v1");
+        private static readonly string LegacyDataDirectory = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VWatchCollector");
+        private static readonly string LegacyConfigPath = Path.Combine(LegacyDataDirectory, "config.json");
+        private static readonly byte[] Entropy = Encoding.UTF8.GetBytes("CodexWorkspaceCollector.Config.v1");
+        private static readonly byte[] LegacyEntropy = Encoding.UTF8.GetBytes("VWatchCollector.Config.v1");
 
         public static CollectorConfig Load() {
             try {
-                if (!File.Exists(ConfigPath)) return new CollectorConfig();
-                CollectorConfig value = new JavaScriptSerializer().Deserialize<CollectorConfig>(File.ReadAllText(ConfigPath, Encoding.UTF8));
+                bool migratedDirectory = false;
+                if (!Directory.Exists(DataDirectory) && Directory.Exists(LegacyDataDirectory)) {
+                    try { Directory.Move(LegacyDataDirectory, DataDirectory); migratedDirectory = true; } catch { }
+                }
+                string sourcePath = File.Exists(ConfigPath) ? ConfigPath : LegacyConfigPath;
+                if (!File.Exists(sourcePath)) return new CollectorConfig();
+                CollectorConfig value = new JavaScriptSerializer().Deserialize<CollectorConfig>(File.ReadAllText(sourcePath, Encoding.UTF8));
                 if (value == null) return new CollectorConfig();
+                bool migratedConfiguration = migratedDirectory || sourcePath.Equals(LegacyConfigPath, StringComparison.OrdinalIgnoreCase);
+                if (migratedConfiguration) {
+                    string legacyKey = Unprotect(value.ProtectedKey, LegacyEntropy);
+                    value.ProtectedKey = Protect(legacyKey, Entropy);
+                }
                 if (value.Folders == null) value.Folders = new List<SyncFolder>();
                 if (value.IntervalMinutes < 1) value.IntervalMinutes = 5;
                 if (String.IsNullOrWhiteSpace(value.SyncMode)) value.SyncMode = "smart";
@@ -65,6 +79,7 @@ namespace VWatchCollector {
                 if (value.QuietSeconds < 30 || value.QuietSeconds > 900) value.QuietSeconds = 90;
                 if (String.IsNullOrWhiteSpace(value.SyncTimes)) value.SyncTimes = "08:00,12:00,18:00,23:00";
                 if (String.IsNullOrWhiteSpace(value.DeviceId)) value.DeviceId = Slug(Environment.MachineName);
+                if (migratedConfiguration) value.Save();
                 return value;
             } catch { return new CollectorConfig(); }
         }
@@ -93,22 +108,31 @@ namespace VWatchCollector {
         }
 
         private static string Protect(string value) {
+            return Protect(value, Entropy);
+        }
+
+        private static string Protect(string value, byte[] entropy) {
             if (String.IsNullOrEmpty(value)) return "";
-            return Convert.ToBase64String(ProtectedData.Protect(Encoding.UTF8.GetBytes(value), Entropy, DataProtectionScope.CurrentUser));
+            return Convert.ToBase64String(ProtectedData.Protect(Encoding.UTF8.GetBytes(value), entropy, DataProtectionScope.CurrentUser));
         }
 
         private static string Unprotect(string value) {
+            return Unprotect(value, Entropy);
+        }
+
+        private static string Unprotect(string value, byte[] entropy) {
             try {
                 if (String.IsNullOrEmpty(value)) return "";
-                return Encoding.UTF8.GetString(ProtectedData.Unprotect(Convert.FromBase64String(value), Entropy, DataProtectionScope.CurrentUser));
+                return Encoding.UTF8.GetString(ProtectedData.Unprotect(Convert.FromBase64String(value), entropy, DataProtectionScope.CurrentUser));
             } catch { return ""; }
         }
 
         private void ApplyStartup() {
             using (RegistryKey key = Registry.CurrentUser.OpenSubKey("Software\\Microsoft\\Windows\\CurrentVersion\\Run", true)) {
                 if (key == null) return;
-                if (StartWithWindows) key.SetValue("VWatchCollector", "\"" + System.Windows.Forms.Application.ExecutablePath + "\"");
-                else key.DeleteValue("VWatchCollector", false);
+                key.DeleteValue("VWatchCollector", false);
+                if (StartWithWindows) key.SetValue("CodexWorkspaceCollector", "\"" + System.Windows.Forms.Application.ExecutablePath + "\"");
+                else key.DeleteValue("CodexWorkspaceCollector", false);
             }
         }
     }

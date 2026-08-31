@@ -5,7 +5,7 @@ using System.Net;
 using System.Text;
 using System.Web.Script.Serialization;
 
-namespace VWatchCollector {
+namespace CodexWorkspaceCollector {
     public sealed class HubClient {
         private readonly CollectorConfig config;
         private readonly JavaScriptSerializer json = new JavaScriptSerializer { MaxJsonLength = 32 * 1024 * 1024 };

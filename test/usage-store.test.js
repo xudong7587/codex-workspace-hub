@@ -37,7 +37,7 @@ test("usage snapshots preserve exact counters and validate the exchange rate", (
 });
 
 test("usage history persists atomically across restarts", async (t) => {
-  const directory = await mkdtemp(join(tmpdir(), "vwatch-usage-"));
+  const directory = await mkdtemp(join(tmpdir(), "cw-usage-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const first = new UsageStore({ dataDir: directory });
   await first.initialize();

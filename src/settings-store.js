@@ -19,6 +19,8 @@ const MAX_SETTINGS_FILE_BYTES = 1024 * 1024;
 const MIN_POLL_SECONDS = 60;
 const MAX_POLL_SECONDS = 86_400;
 const MAX_STALE_SECONDS = 7 * 86_400;
+const SETTINGS_ENCRYPTION_CONTEXT = "codex-workspace-hub/settings/v1\0";
+const LEGACY_SETTINGS_ENCRYPTION_CONTEXT = "vwatch-quota-hub/settings/v1\0";
 
 function clone(value) {
   return structuredClone(value);
@@ -137,12 +139,12 @@ export function normalizeRuntimeSettings(value, defaults = defaultRuntimeSetting
   };
 }
 
-function encryptionKey(encryptionSecret) {
+function encryptionKey(encryptionSecret, context = SETTINGS_ENCRYPTION_CONTEXT) {
   if (typeof encryptionSecret !== "string" || Buffer.byteLength(encryptionSecret, "utf8") < 32) {
     throw new Error("A strong settings encryption secret is required");
   }
   return createHash("sha256")
-    .update("vwatch-quota-hub/settings/v1\0", "utf8")
+    .update(context, "utf8")
     .update(encryptionSecret, "utf8")
     .digest();
 }
@@ -209,7 +211,9 @@ export class SettingsStore {
     this.defaults = normalizeRuntimeSettings(
       options.defaults || defaultRuntimeSettings(options.config),
     );
-    this.key = encryptionKey(options.encryptionSecret || options.adminToken);
+    const encryptionSecret = options.encryptionSecret || options.adminToken;
+    this.key = encryptionKey(encryptionSecret);
+    this.legacyKey = encryptionKey(encryptionSecret, LEGACY_SETTINGS_ENCRYPTION_CONTEXT);
     this.value = null;
     this.writePromise = Promise.resolve();
   }
@@ -220,10 +224,21 @@ export class SettingsStore {
       if (metadata.size > MAX_SETTINGS_FILE_BYTES) throw settingsFileTooLarge();
       const raw = await readFile(this.filePath);
       if (raw.byteLength > MAX_SETTINGS_FILE_BYTES) throw settingsFileTooLarge();
-      this.value = normalizeRuntimeSettings(
-        decryptSettings(JSON.parse(raw.toString("utf8")), this.key),
-        this.defaults,
-      );
+      const envelope = JSON.parse(raw.toString("utf8"));
+      let decrypted;
+      let migrated = false;
+      try {
+        decrypted = decryptSettings(envelope, this.key);
+      } catch (currentError) {
+        try {
+          decrypted = decryptSettings(envelope, this.legacyKey);
+          migrated = true;
+        } catch {
+          throw currentError;
+        }
+      }
+      this.value = normalizeRuntimeSettings(decrypted, this.defaults);
+      if (migrated) await this.save(this.value);
       return this.get();
     } catch (error) {
       if (error?.code !== "ENOENT") throw error;

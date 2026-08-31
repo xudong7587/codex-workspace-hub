@@ -8,12 +8,12 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Windows.Forms;
 
-namespace VWatchCollector {
+namespace CodexWorkspaceCollector {
     internal static class Program {
         [STAThread]
         private static void Main() {
             bool created;
-            using (Mutex mutex = new Mutex(true, "Local\\VWatchCollector.SingleInstance", out created)) {
+            using (Mutex mutex = new Mutex(true, "Local\\CodexWorkspaceCollector.SingleInstance", out created)) {
                 if (!created) { MessageBox.Show("Codex Workspace Collector 已经在运行。", "Codex Workspace Collector"); return; }
                 Application.EnableVisualStyles();
                 Application.SetCompatibleTextRenderingDefault(false);

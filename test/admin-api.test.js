@@ -344,7 +344,7 @@ test("a delayed delete cannot cancel a newer Codex login session", async () => {
     request({
       method: "POST",
       token: ADMIN_TOKEN,
-      headers: { "x-vwatch-login-id": sessionId },
+      headers: { "x-cw-login-id": sessionId },
     }),
     "/admin/api/providers/codex/login",
   );

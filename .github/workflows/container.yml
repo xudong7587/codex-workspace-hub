@@ -26,7 +26,7 @@ jobs:
           context: .
           platforms: linux/amd64
           load: true
-          tags: vwatch-quota-hub:smoke
+          tags: codex-workspace-hub:smoke
           provenance: false
           sbom: false
           cache-from: type=gha,scope=container
@@ -36,13 +36,13 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          data_dir="$RUNNER_TEMP/vwatch-smoke-data"
+          data_dir="$RUNNER_TEMP/cw-smoke-data"
           mkdir -p "$data_dir"
           sudo chown root:root "$data_dir"
           sudo chmod 0755 "$data_dir"
 
           cid="$(docker run -d \
-            --name vwatch-quota-hub-smoke \
+            --name codex-workspace-hub-smoke \
             --init \
             --memory 128m \
             --cpus 0.50 \
@@ -58,7 +58,7 @@ jobs:
             -e PGID=10 \
             -v "$data_dir:/data" \
             -p 127.0.0.1:17321:17321 \
-            vwatch-quota-hub:smoke)"
+            codex-workspace-hub:smoke)"
 
           cleanup() {
             docker logs "$cid" || true
@@ -91,7 +91,7 @@ jobs:
           sleep 15
           test "$(docker inspect -f '{{.State.Running}}' "$cid")" = "true"
           docker stats --no-stream "$cid"
-          docker image inspect vwatch-quota-hub:smoke --format 'IMAGE_BYTES={{.Size}}'
+          docker image inspect codex-workspace-hub:smoke --format 'IMAGE_BYTES={{.Size}}'
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -104,7 +104,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/xudong7587/vwatch-quota-hub
+          images: ghcr.io/xudong7587/codex-workspace-hub
           tags: |
             type=raw,value=stable,enable={{is_default_branch}}
             type=raw,value=latest,enable={{is_default_branch}}

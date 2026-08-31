@@ -5,7 +5,7 @@ import { createInterface } from "node:readline";
 import { APP_VERSION } from "./version.js";
 
 const DEFAULT_CLIENT_INFO = Object.freeze({
-  name: "vwatch-quota-hub",
+  name: "codex-workspace-hub",
   title: "Codex Workspace Hub",
   version: APP_VERSION,
 });

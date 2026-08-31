@@ -31,15 +31,18 @@ PC 采集器不会上传或转移 Codex 登录凭据。CW 要在所有 PC 关机
 
 ## Windows 采集器
 
-从 [Releases](https://github.com/xudong7587/vwatch-quota-hub/releases) 下载 `CodexWorkspaceCollector.exe`，填写管理面板显示的 CW HTTPS 根地址和设备连接 Key。
+从 [Releases](https://github.com/xudong7587/codex-workspace-hub/releases) 下载 `CodexWorkspaceCollector.exe`，填写管理面板显示的 CW HTTPS 根地址和设备连接 Key。
 
 默认采用智能同步：文件变化后等待 90 秒无新写入再同步，并在每天 `08:00,12:00,18:00,23:00` 兜底检查；也可以改成仅定时或仅手动。项目源码、配置和文档会在本机加密后双向同步，`.git`、依赖、构建缓存、`.env` 和密钥文件不会上传。Codex 对话仅在停止写入后加密备份，不会覆盖另一台电脑正在使用的 Codex 数据。
 
 ## 更新
 
+从旧仓库名迁移到 v0.9.0 时，先下载新版 `compose.yaml`，再执行：
+
 ```bash
+docker compose down
 docker compose pull
-docker compose up -d --force-recreate
+docker compose up -d
 ```
 
-镜像与仓库地址为了兼容旧版仍保留 `vwatch-quota-hub` 名称。
+`docker compose down` 不会删除命名数据卷，已有管理设置和 Codex 授权会保留。此后普通更新只需执行后两行。镜像地址为 `ghcr.io/xudong7587/codex-workspace-hub:latest`。

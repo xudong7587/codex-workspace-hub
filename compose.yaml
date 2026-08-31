@@ -1,6 +1,6 @@
 services:
-  quota-hub:
-    image: ghcr.io/xudong7587/vwatch-quota-hub:latest
+  workspace-hub:
+    image: ghcr.io/xudong7587/codex-workspace-hub:latest
     pull_policy: always
     restart: unless-stopped
     init: true

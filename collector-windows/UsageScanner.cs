@@ -5,7 +5,7 @@ using System.IO;
 using System.Text;
 using System.Web.Script.Serialization;
 
-namespace VWatchCollector {
+namespace CodexWorkspaceCollector {
     public sealed class UsageCounters {
         public long totalTokens, inputTokens, cacheReadTokens, outputTokens, reasoningTokens, messageCount;
         public double costUsd;
@@ -77,7 +77,7 @@ namespace VWatchCollector {
             Dictionary<string, object> modelJson = new Dictionary<string, object>();
             foreach (KeyValuePair<string, UsageCounters> pair in models) modelJson[pair.Key] = pair.Value.Json();
             return new Dictionary<string, object> {
-                { "source", "vwatch-collector" }, { "capturedAt", DateTime.UtcNow.ToString("o") },
+                { "source", "codex-workspace-collector" }, { "capturedAt", DateTime.UtcNow.ToString("o") },
                 { "dayKey", now.ToString("yyyy-MM-dd") }, { "weekKey", IsoWeekKey(now) }, { "monthKey", now.ToString("yyyy-MM") },
                 { "usdCnyRate", usdCnyRate }, { "models", modelJson },
                 { "periods", new Dictionary<string, object> { { "day", day.Json() }, { "week", week.Json() }, { "month", month.Json() }, { "total", total.Json() } } }

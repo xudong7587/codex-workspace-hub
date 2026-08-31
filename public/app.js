@@ -1,8 +1,10 @@
 (() => {
   "use strict";
 
-  const TOKEN_STORAGE_KEY = "vwatch-quota-hub.admin-token";
-  const THEME_STORAGE_KEY = "vwatch-quota-hub.theme";
+  const TOKEN_STORAGE_KEY = "codex-workspace-hub.admin-token";
+  const THEME_STORAGE_KEY = "codex-workspace-hub.theme";
+  const LEGACY_TOKEN_STORAGE_KEY = "vwatch-quota-hub.admin-token";
+  const LEGACY_THEME_STORAGE_KEY = "vwatch-quota-hub.theme";
   const STATIC_PROVIDER_IDS = ["codex", "openrouter"];
   const THEME_ORDER = ["system", "light", "dark"];
   const PAGE_NAMES = new Set(["overview", "devices", "codex", "quota", "watch"]);
@@ -30,7 +32,14 @@
 
   function getStoredToken() {
     try {
-      return window.sessionStorage.getItem(TOKEN_STORAGE_KEY) || "";
+      const token = window.sessionStorage.getItem(TOKEN_STORAGE_KEY)
+        || window.sessionStorage.getItem(LEGACY_TOKEN_STORAGE_KEY)
+        || "";
+      if (token && !window.sessionStorage.getItem(TOKEN_STORAGE_KEY)) {
+        window.sessionStorage.setItem(TOKEN_STORAGE_KEY, token);
+        window.sessionStorage.removeItem(LEGACY_TOKEN_STORAGE_KEY);
+      }
+      return token;
     } catch {
       return "";
     }
@@ -48,6 +57,7 @@
   function clearToken() {
     try {
       window.sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+      window.sessionStorage.removeItem(LEGACY_TOKEN_STORAGE_KEY);
     } catch {
       return;
     }
@@ -55,7 +65,12 @@
 
   function getStoredTheme() {
     try {
-      const theme = window.sessionStorage.getItem(THEME_STORAGE_KEY);
+      const theme = window.sessionStorage.getItem(THEME_STORAGE_KEY)
+        || window.sessionStorage.getItem(LEGACY_THEME_STORAGE_KEY);
+      if (THEME_ORDER.includes(theme) && !window.sessionStorage.getItem(THEME_STORAGE_KEY)) {
+        window.sessionStorage.setItem(THEME_STORAGE_KEY, theme);
+        window.sessionStorage.removeItem(LEGACY_THEME_STORAGE_KEY);
+      }
       return THEME_ORDER.includes(theme) ? theme : "system";
     } catch {
       return "system";
@@ -101,7 +116,7 @@
 
     const headers = {
       Accept: "application/json",
-      "X-Requested-With": "VWatch-Quota-Hub",
+      "X-Requested-With": "Codex-Workspace-Hub",
       ...(options.headers && typeof options.headers === "object" ? options.headers : {}),
       Authorization: `Bearer ${token}`
     };
@@ -146,7 +161,7 @@
   async function publicApi(path, options = {}) {
     const headers = {
       Accept: "application/json",
-      "X-Requested-With": "VWatch-Quota-Hub"
+      "X-Requested-With": "Codex-Workspace-Hub"
     };
     if (options.body !== undefined) headers["Content-Type"] = "application/json";
     let response;
@@ -1449,7 +1464,7 @@
     try {
       const login = await api("/admin/api/providers/codex/login", {
         method: "POST",
-        headers: { "X-VWatch-Login-Id": attemptId }
+        headers: { "X-CW-Login-Id": attemptId }
       });
       if (generation !== codexLoginGeneration) return;
       codexLoginId = typeof login.id === "string" && login.id ? login.id : attemptId;
@@ -1655,7 +1670,7 @@
       headers: {
         Accept: "application/json",
         Authorization: `Bearer ${token}`,
-        "X-Requested-With": "VWatch-Quota-Hub"
+        "X-Requested-With": "Codex-Workspace-Hub"
       },
       cache: "no-store",
       credentials: "same-origin",

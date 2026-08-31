@@ -316,8 +316,8 @@ export class CodexDirectClient extends EventEmitter {
         Authorization: `Bearer ${auth.tokens.access_token}`,
         "ChatGPT-Account-Id": id,
         "OAI-Product-Sku": "codex",
-        originator: "vwatch_quota_hub",
-        "User-Agent": `vwatch-quota-hub/${APP_VERSION}`,
+        originator: "codex_workspace_hub",
+        "User-Agent": `codex-workspace-hub/${APP_VERSION}`,
       },
     });
   }

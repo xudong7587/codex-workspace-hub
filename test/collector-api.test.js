@@ -15,7 +15,7 @@ function period(tokens, cost = 0) {
 }
 
 async function withServer(run) {
-  const dataDir = await mkdtemp(join(tmpdir(), "vwatch-collector-"));
+  const dataDir = await mkdtemp(join(tmpdir(), "cw-collector-"));
   const usageStore = new UsageStore({ dataDir });
   const syncStore = new SyncStore({ dataDir });
   await usageStore.initialize();

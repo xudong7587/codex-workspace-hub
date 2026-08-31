@@ -6,7 +6,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Web.Script.Serialization;
 
-namespace VWatchCollector {
+namespace CodexWorkspaceCollector {
     [Serializable]
     public sealed class LocalFileState { public string Hash { get; set; } public long Revision { get; set; } }
     [Serializable]

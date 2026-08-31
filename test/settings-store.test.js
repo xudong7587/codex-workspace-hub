@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createCipheriv, createHash, randomBytes } from "node:crypto";
 import {
   mkdir,
   mkdtemp,
@@ -20,8 +21,30 @@ import {
 const ADMIN_TOKEN_A = "admin-token-a-0123456789abcdef0123456789abcdef";
 const ADMIN_TOKEN_B = "admin-token-b-fedcba9876543210fedcba9876543210";
 
+function legacySettingsEnvelope(settings, encryptionSecret) {
+  const key = createHash("sha256")
+    .update("vwatch-quota-hub/settings/v1\0", "utf8")
+    .update(encryptionSecret, "utf8")
+    .digest();
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", key, iv);
+  const encrypted = Buffer.concat([
+    cipher.update(Buffer.from(JSON.stringify(settings), "utf8")),
+    cipher.final(),
+  ]);
+  return {
+    schemaVersion: 1,
+    protected: {
+      algorithm: "aes-256-gcm",
+      iv: iv.toString("base64"),
+      tag: cipher.getAuthTag().toString("base64"),
+      data: encrypted.toString("base64"),
+    },
+  };
+}
+
 async function temporaryDataDir(t) {
-  const directory = await mkdtemp(join(tmpdir(), "vwatch-settings-"));
+  const directory = await mkdtemp(join(tmpdir(), "cw-settings-"));
   t.after(async () => {
     await rm(directory, { recursive: true, force: true });
   });
@@ -102,6 +125,27 @@ test("settings file encrypts provider API keys instead of storing plaintext", as
 
   const reopened = new SettingsStore({ dataDir, adminToken: ADMIN_TOKEN_A });
   assert.equal((await reopened.load()).providers.openrouter.apiKey, apiKey);
+});
+
+test("legacy settings are read once and re-encrypted with the CW identity", async (t) => {
+  const dataDir = await temporaryDataDir(t);
+  const settings = {
+    ...defaultRuntimeSettings(),
+    providers: {
+      codex: { enabled: true },
+      openrouter: { enabled: true, apiKey: "legacy-openrouter-key", mode: "key" },
+    },
+  };
+  const legacyBody = `${JSON.stringify(legacySettingsEnvelope(settings, ADMIN_TOKEN_A))}\n`;
+  await writeFile(join(dataDir, "config.json"), legacyBody, "utf8");
+
+  const store = new SettingsStore({ dataDir, adminToken: ADMIN_TOKEN_A });
+  assert.equal((await store.load()).providers.openrouter.apiKey, "legacy-openrouter-key");
+  const migratedBody = await readFile(join(dataDir, "config.json"), "utf8");
+  assert.notEqual(migratedBody, legacyBody);
+
+  const reopened = new SettingsStore({ dataDir, adminToken: ADMIN_TOKEN_A });
+  assert.equal((await reopened.load()).providers.openrouter.apiKey, "legacy-openrouter-key");
 });
 
 test("a different admin token cannot decrypt an existing settings file", async (t) => {

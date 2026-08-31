@@ -60,7 +60,7 @@ export function normalizeUsageSnapshot(value, now = Date.now()) {
   }
   return {
     schemaVersion: SCHEMA_VERSION,
-    source: input.source === "tokscale" ? "tokscale" : "vwatch-collector",
+    source: input.source === "tokscale" ? "tokscale" : "codex-workspace-collector",
     capturedAt: date.toISOString(),
     importedAt: new Date(now).toISOString(),
     dayKey: cleanKey(input.dayKey, dayFallback, /^\d{4}-\d{2}-\d{2}$/),
@@ -104,7 +104,7 @@ function aggregateDevices(devices) {
   }
   return {
     schemaVersion: SCHEMA_VERSION,
-    source: "vwatch-collector",
+    source: "codex-workspace-collector",
     capturedAt: latest.capturedAt,
     importedAt: new Date().toISOString(),
     dayKey: latest.dayKey,

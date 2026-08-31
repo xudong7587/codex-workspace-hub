@@ -287,7 +287,7 @@ export function createAdminApi(options = {}) {
         if (!provider.loginManager) return result(404, { error: "login_not_supported" });
         if (request.method === "POST") {
           const sessionId = loginSessionId(
-            requestHeader(request, "x-vwatch-login-id"),
+            requestHeader(request, "x-cw-login-id"),
             "登录会话 ID",
           );
           return result(202, await provider.loginManager.begin({ sessionId }));

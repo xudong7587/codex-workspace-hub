@@ -151,7 +151,7 @@ Authorization: Bearer <ADMIN_SESSION_TOKEN>
 - `POST /admin/api/refresh`：手动刷新全部已启用且已配置的 provider。
 - `PUT /admin/api/providers/:id`：启停或更新 provider 设置；Secret 留空表示保留原值。
 - `POST /admin/api/providers/:id/refresh`：刷新指定 provider。
-- `POST /admin/api/providers/codex/login`：开始设备码登录；面板使用 `X-VWatch-Login-Id` 为本轮流程绑定随机会话 ID。
+- `POST /admin/api/providers/codex/login`：开始设备码登录；面板使用 `X-CW-Login-Id` 为本轮流程绑定随机会话 ID。
 - `GET /admin/api/providers/codex/login`：读取设备码登录状态。
 - `DELETE /admin/api/providers/codex/login?id=<session-id>`：仅在 ID 仍匹配时取消未完成的设备码登录并停止临时 app-server；面板关闭登录窗口或页面时会调用它，延迟到达的旧页面请求不会取消新会话。
 

@@ -12,4 +12,4 @@
 
 项目文件在本机加密，Hub 只保存密文。发生双端修改时保留 `.codex-sync-conflict-*` 副本，不传播删除操作。`.git`、依赖和构建目录、`.env` 与常见私钥文件不会上传。
 
-Codex 对话只在 JSONL 停止写入 120 秒后备份到 `%LOCALAPPDATA%\VWatchCollector\ConversationBackups`，不会写入另一台电脑的实时 `.codex` 目录。
+Codex 对话只在 JSONL 停止写入 120 秒后备份到 `%LOCALAPPDATA%\CodexWorkspaceCollector\ConversationBackups`，不会写入另一台电脑的实时 `.codex` 目录。

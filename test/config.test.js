@@ -14,7 +14,7 @@ test("loadConfig defaults to the APK Token Monitor port 17321", () => {
 });
 
 test("loadConfig derives the Codex home from a custom data directory", () => {
-  const dataDir = join("custom", "vwatch-data");
+  const dataDir = join("custom", "cw-data");
   const config = loadConfig({ DATA_DIR: dataDir });
 
   assert.equal(config.dataDir, dataDir);
