@@ -1,6 +1,6 @@
 {
   "name": "vwatch-quota-hub",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "private": true,
   "description": "A lightweight multi-device Codex workspace, conversation backup, and quota hub.",
   "type": "module",

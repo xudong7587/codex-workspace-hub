@@ -29,7 +29,7 @@
           <div class="login-copy">
             <p class="eyebrow">首次设置</p>
             <h1 id="loginTitle">创建管理密码</h1>
-            <p>只需设置一次。手机桥接 Secret 会由 Hub 自动生成，进入面板后直接复制。</p>
+            <p>只需设置一次。CW 会自动生成供 PC 采集器和手机桥接使用的设备连接 Key。</p>
           </div>
           <form id="setupForm" class="stack-form" novalidate>
             <div class="field">
@@ -92,12 +92,11 @@
 
       <div class="shell-main">
         <nav class="sidebar-nav" aria-label="主导航">
-          <a class="nav-link is-active" href="#overview">同步总览</a>
-          <a class="nav-link" href="#workspaces">项目与设备</a>
-          <a class="nav-link" href="#sync-strategy">同步机制</a>
-          <a class="nav-link" href="#settings">额度调度</a>
-          <a class="nav-link" href="#providers">Codex 与 AI</a>
-          <a class="nav-link" href="#bridge">手表桥接 · 附加</a>
+          <a class="nav-link is-active" href="#overview" data-page-link="overview">1 开始</a>
+          <a class="nav-link" href="#devices" data-page-link="devices">2 PC 与项目</a>
+          <a class="nav-link" href="#codex" data-page-link="codex">3 Codex 额度</a>
+          <a class="nav-link" href="#quota" data-page-link="quota">4 额度刷新</a>
+          <a class="nav-link" href="#watch" data-page-link="watch">5 手机与手表</a>
         </nav>
 
         <div class="workspace-layout">
@@ -121,12 +120,12 @@
           </section>
 
           <div id="appContent" hidden>
-            <section class="page-section" id="overview" aria-labelledby="overviewTitle">
+            <section class="page-section" id="overview" data-page="overview" aria-labelledby="overviewTitle">
               <div class="page-heading">
                 <div>
                   <p class="eyebrow">多设备开发中枢</p>
                   <h1 id="overviewTitle">让每台电脑接着上一台继续</h1>
-                  <p>集中同步 Codex 项目文件、安全备份对话进度，并把各设备的 token 使用汇总到一个地方。</p>
+                  <p>先部署 CW，再按需要接入 PC 项目同步或 CW 独立额度。两条链路互不依赖，手机与手表是额度链路的可选出口。</p>
                 </div>
                 <dl class="heading-facts">
                   <div>
@@ -138,6 +137,41 @@
                     <dd id="latestUpdateTime">尚无数据</dd>
                   </div>
                 </dl>
+              </div>
+
+              <div class="journey-board surface" aria-label="首次使用流程">
+                <div class="journey-heading">
+                  <div><p class="section-kicker">First run</p><h2>第一次使用，按这张图走</h2></div>
+                  <span class="badge badge-neutral" id="journeyProgress">正在检查</span>
+                </div>
+                <div class="journey-flow">
+                  <article class="journey-step is-required">
+                    <span class="journey-number">01</span>
+                    <div><strong>部署 Docker 中的 CW</strong><small>这是两条链路共同的中转和存储中心。</small></div>
+                    <span class="badge badge-success" id="journeyHubStatus">已完成</span>
+                  </article>
+                  <div class="journey-branches">
+                    <article class="journey-step">
+                      <span class="journey-number">02A</span>
+                      <div><strong>连接 PC 采集器</strong><small>用于项目文件、对话备份和 token 历史；不传账号凭证。</small></div>
+                      <span class="badge badge-neutral" id="journeyPcStatus">可选</span>
+                    </article>
+                    <article class="journey-step">
+                      <span class="journey-number">02B</span>
+                      <div><strong>在 CW 连接 Codex</strong><small>用于剩余额度；独立于 PC，PC 关机后仍可刷新。</small></div>
+                      <span class="badge badge-neutral" id="journeyCodexStatus">可选</span>
+                    </article>
+                  </div>
+                  <article class="journey-step">
+                    <span class="journey-number">03</span>
+                    <div><strong>接入手机与手表</strong><small>需要 02B 已完成；填写同一个 HTTPS 地址和连接 Key。</small></div>
+                    <span class="badge badge-neutral" id="journeyWatchStatus">附加</span>
+                  </article>
+                </div>
+                <div class="journey-actions">
+                  <a class="button button-primary" href="#devices">开始连接 PC</a>
+                  <a class="button button-secondary" href="#codex">只配置额度与手表</a>
+                </div>
               </div>
 
               <div class="overview-grid">
@@ -167,7 +201,7 @@
                       <dd id="syncConversationCount">0 个</dd>
                     </div>
                   </dl>
-                  <a class="button button-primary button-small" href="#workspaces">查看项目与设备</a>
+                  <a class="button button-primary button-small" href="#devices">查看项目与设备</a>
                 </article>
 
                 <article class="surface status-surface">
@@ -204,13 +238,35 @@
               </div>
             </section>
 
-            <section class="page-section" id="workspaces" aria-labelledby="workspacesTitle">
+            <section class="page-section" id="workspaces" data-page="devices" aria-labelledby="workspacesTitle">
               <div class="section-heading">
                 <div>
-                  <p class="eyebrow">设备与工作区</p>
-                  <h2 id="workspacesTitle">谁在同步，哪些项目已进入 Hub</h2>
+                  <p class="eyebrow">第 2 步 · PC 开发同步</p>
+                  <h2 id="workspacesTitle">把每台开发电脑接入 CW</h2>
                 </div>
-                <p>设备来自 Windows 采集器上报；项目数据始终以客户端密文保存在 NAS。</p>
+                <p>先在 PC 启动采集器，再填写下面的地址和 Key。账号授权不会从 PC 上传。</p>
+              </div>
+              <div class="pc-setup surface">
+                <div class="pc-setup-copy">
+                  <p class="section-kicker">Windows collector</p>
+                  <h3>每台电脑都做一次</h3>
+                  <ol>
+                    <li>下载并运行单文件采集器，不需要安装 Node.js 或 Python。</li>
+                    <li>填写 CW HTTPS 地址、连接 Key，并为这台电脑命名。</li>
+                    <li>添加项目目录；同一项目在不同电脑使用相同的同步名称。</li>
+                    <li>在采集器里选择智能、定时或手动同步。策略只属于当前 PC。</li>
+                  </ol>
+                  <a class="button button-primary" href="https://github.com/xudong7587/vwatch-quota-hub/releases/latest/download/CodexWorkspaceCollector.exe">下载 Windows 采集器</a>
+                </div>
+                <dl class="connection-credentials">
+                  <div><dt>CW HTTPS 地址</dt><dd><code id="pcHubEndpoint">读取中</code></dd></div>
+                  <div><dt>设备连接 Key</dt><dd><code id="pcHubSecret">读取中</code></dd></div>
+                  <div class="button-row align-start">
+                    <button class="button button-quiet button-small" id="copyPcEndpointButton" type="button">复制地址</button>
+                    <button class="button button-quiet button-small" id="copyPcSecretButton" type="button">复制 Key</button>
+                  </div>
+                  <p>连接 Key 同时用于鉴权和客户端加密派生。不要发给不受信任的设备。</p>
+                </dl>
               </div>
               <div class="sync-console-grid">
                 <article class="surface sync-console-card">
@@ -224,7 +280,7 @@
               </div>
             </section>
 
-            <section class="page-section" id="sync-strategy" aria-labelledby="syncStrategyTitle">
+            <section class="page-section page-subsection" id="sync-strategy" data-page="devices" aria-labelledby="syncStrategyTitle">
               <div class="section-heading">
                 <div>
                   <p class="eyebrow">PC 端独立设置</p>
@@ -240,11 +296,11 @@
               </div>
             </section>
 
-            <section class="page-section" id="settings" aria-labelledby="settingsTitle">
+            <section class="page-section" id="settings" data-page="quota" aria-labelledby="settingsTitle">
               <div class="section-heading">
                 <div>
-                  <p class="eyebrow">额度采集</p>
-                  <h2 id="settingsTitle">额度调度</h2>
+                  <p class="eyebrow">第 4 步 · CW 独立调度</p>
+                  <h2 id="settingsTitle">控制 CW 读取额度的频率</h2>
                 </div>
                 <p>这里只控制 Hub 读取 AI 额度的频率，与各台 PC 的项目同步策略互不影响。</p>
               </div>
@@ -284,14 +340,20 @@
               </form>
             </section>
 
-            <section class="page-section" id="providers" aria-labelledby="providersTitle">
+            <section class="page-section" id="providers" data-page="codex" aria-labelledby="providersTitle">
               <div class="section-heading">
                 <div>
-                  <p class="eyebrow">额度来源</p>
-                  <h2 id="providersTitle">Codex 与其他 AI 连接</h2>
+                  <p class="eyebrow">第 3 步 · CW 独立授权</p>
+                  <h2 id="providersTitle">让 CW 自己读取 Codex 剩余额度</h2>
                 </div>
-                <p>密钥输入框不会回填已有密钥。留空保存时保留服务端现有密钥。</p>
+                <p>PC 采集器不会传递 Codex 登录。要让 CW 脱离 PC 服务手机和手表，请在这里单独完成设备码授权。</p>
               </div>
+
+              <aside class="auth-boundary surface">
+                <div class="auth-boundary-mark">!</div>
+                <div><strong>为什么要再登录一次？</strong><p>PC 上的 Codex 登录凭证只属于那台电脑。CW 采用自己的设备码授权，并把凭证加密保存在 Docker 数据卷中；因此所有 PC 关机后，CW 仍能刷新剩余额度。</p></div>
+                <span class="badge badge-neutral" id="cwCodexAuthStatus">等待检查</span>
+              </aside>
 
               <div class="empty-state" id="providersEmptyState" hidden>
                 <h3>还没有可用连接器</h3>
@@ -417,13 +479,20 @@
               </div>
             </section>
 
-            <section class="page-section bridge-addon" id="bridge" aria-labelledby="bridgeTitle">
+            <section class="page-section bridge-addon" id="bridge" data-page="watch" aria-labelledby="bridgeTitle">
               <div class="section-heading">
                 <div>
-                  <p class="eyebrow">附加能力</p>
-                  <h2 id="bridgeTitle">手机额度桥接与手表</h2>
+                  <p class="eyebrow">第 5 步 · 可选出口</p>
+                  <h2 id="bridgeTitle">最后连接手机额度桥接与手表</h2>
                 </div>
-                <p>同步中心的额度数据可以继续通过现有 APK 和 vivo 健康通道发送到 OrbitV / VWatch 表盘。</p>
+                <p>先确认 CW 的 Codex 额度正常，再把同一个 HTTPS 地址和连接 Key 填入手机 APK。</p>
+              </div>
+              <div class="watch-flow surface">
+                <div><span>1</span><strong>CW 连接 Codex</strong><small>CW 独立刷新额度，PC 可以关机。</small></div>
+                <i aria-hidden="true">→</i>
+                <div><span>2</span><strong>手机额度桥接</strong><small>填写下面的 CW 地址与 Key。</small></div>
+                <i aria-hidden="true">→</i>
+                <div><span>3</span><strong>vivo 健康与手表</strong><small>沿现有蓝牙健康通道发送到表盘。</small></div>
               </div>
               <article class="surface status-surface">
                 <div class="surface-heading">

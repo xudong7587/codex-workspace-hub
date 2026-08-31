@@ -5,6 +5,16 @@
   const THEME_STORAGE_KEY = "vwatch-quota-hub.theme";
   const STATIC_PROVIDER_IDS = ["codex", "openrouter"];
   const THEME_ORDER = ["system", "light", "dark"];
+  const PAGE_NAMES = new Set(["overview", "devices", "codex", "quota", "watch"]);
+  const PAGE_ALIASES = {
+    workspaces: "devices",
+    "sync-strategy": "devices",
+    providers: "codex",
+    "provider-codex": "codex",
+    "provider-openrouter": "codex",
+    settings: "quota",
+    bridge: "watch"
+  };
 
   let currentState = null;
   let toastTimer = null;
@@ -280,6 +290,28 @@
     byId("loadingState").hidden = true;
     byId("errorState").hidden = true;
     byId("appContent").hidden = false;
+    renderPage();
+  }
+
+  function resolvePage() {
+    const target = window.location.hash.replace(/^#/, "") || "overview";
+    return PAGE_NAMES.has(target) ? target : PAGE_ALIASES[target] || "overview";
+  }
+
+  function renderPage({ scrollToTop = false } = {}) {
+    const page = resolvePage();
+    document.querySelectorAll("[data-page]").forEach((section) => {
+      const active = section.dataset.page === page;
+      section.hidden = !active;
+      section.classList.toggle("is-active", active);
+    });
+    document.querySelectorAll("[data-page-link]").forEach((link) => {
+      const active = link.dataset.pageLink === page;
+      link.classList.toggle("is-active", active);
+      if (active) link.setAttribute("aria-current", "page");
+      else link.removeAttribute("aria-current");
+    });
+    if (scrollToTop) window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function updateTopStatus(text, state) {
@@ -366,11 +398,35 @@
     setBadge(byId("hubStatusBadge"), hubStatus);
     updateTopStatus(hubStatus.text === "正常" ? "Hub 正常运行" : `Hub ${hubStatus.text}`, hubStatus.topState);
 
+    renderJourney(devices, providers, bridge);
     renderCoreQuotaDock(providers);
     renderUsageHistory(state.usage);
     renderSyncConsole(state.usage, sync);
     renderBridge(bridge, providers);
     renderProviders(providers);
+  }
+
+  function renderJourney(devices, providers, bridge) {
+    const codex = providers.find((provider) => provider.id.toLowerCase() === "codex");
+    const codexConnected = Boolean(codex?.enabled && codex?.configured && !providerNeedsConnection(codex));
+    const pcConnected = devices.length > 0;
+    const watchReady = codexConnected && bridge?.secretConfigured !== false;
+    const completeCount = 1 + Number(pcConnected) + Number(codexConnected);
+
+    setBadge(byId("journeyHubStatus"), { text: "已完成", badgeClass: "badge-success", topState: "ok" });
+    setBadge(byId("journeyPcStatus"), pcConnected
+      ? { text: `${devices.length} 台已连接`, badgeClass: "badge-success", topState: "ok" }
+      : { text: "尚未连接", badgeClass: "badge-neutral", topState: "" });
+    setBadge(byId("journeyCodexStatus"), codexConnected
+      ? { text: "已授权", badgeClass: "badge-success", topState: "ok" }
+      : { text: "等待授权", badgeClass: "badge-warning", topState: "busy" });
+    setBadge(byId("journeyWatchStatus"), watchReady
+      ? { text: "可以接入", badgeClass: "badge-success", topState: "ok" }
+      : { text: "完成 02B 后配置", badgeClass: "badge-neutral", topState: "" });
+    setBadge(byId("cwCodexAuthStatus"), codexConnected
+      ? { text: "CW 已授权", badgeClass: "badge-success", topState: "ok" }
+      : { text: "需要独立授权", badgeClass: "badge-warning", topState: "busy" });
+    byId("journeyProgress").textContent = `${completeCount}/3 项就绪`;
   }
 
   function isProvider(value) {
@@ -397,8 +453,31 @@
       provider.enabled && provider.configured && !providerNeedsConnection(provider)
     ));
     list.replaceChildren();
-    dock.hidden = connected.length === 0;
-    if (connected.length === 0) return;
+    dock.hidden = false;
+    if (connected.length === 0) {
+      byId("coreQuotaSummary").textContent = "核心数据固定显示在这里";
+      const emptyCard = document.createElement("a");
+      emptyCard.className = "core-quota-card is-warning";
+      emptyCard.href = "#codex";
+      const heading = document.createElement("div");
+      heading.className = "core-quota-card-heading";
+      const identity = document.createElement("div");
+      const title = document.createElement("strong");
+      title.textContent = "尚未连接 Codex";
+      const subtitle = document.createElement("span");
+      subtitle.textContent = "授权后显示剩余额度";
+      identity.append(title, subtitle);
+      const action = document.createElement("span");
+      action.className = "core-quota-status";
+      action.textContent = "去连接";
+      heading.append(identity, action);
+      const explanation = document.createElement("p");
+      explanation.className = "core-quota-empty";
+      explanation.textContent = "PC 连接不会自动带来账号授权";
+      emptyCard.append(heading, explanation);
+      list.append(emptyCard);
+      return;
+    }
 
     const healthy = connected.filter((provider) => !provider.error && isHealthyStatus(provider.status));
     byId("coreQuotaSummary").textContent = healthy.length === connected.length
@@ -408,9 +487,7 @@
     for (const provider of connected) {
       const card = document.createElement("a");
       card.className = "core-quota-card";
-      card.href = provider.id === "codex" || provider.id === "openrouter"
-        ? `#provider-${provider.id}`
-        : "#providers";
+      card.href = "#codex";
       const descriptor = statusDescriptor(provider.status, provider.configured);
       if (provider.error || isErrorStatus(provider.status)) {
         card.classList.add("is-error");
@@ -563,11 +640,16 @@
     const endpoint = window.location.origin;
     byId("bridgeEndpoint").textContent = endpoint;
     byId("bridgeEndpoint").dataset.copyValue = endpoint;
+    byId("pcHubEndpoint").textContent = endpoint;
+    byId("pcHubEndpoint").dataset.copyValue = endpoint;
 
     const bridgeSecret = typeof bridge.secret === "string" ? bridge.secret : "";
     byId("bridgeSecret").textContent = bridgeSecret || "尚未生成";
     byId("bridgeSecret").dataset.copyValue = bridgeSecret;
     byId("copyBridgeSecretButton").disabled = !bridgeSecret;
+    byId("pcHubSecret").textContent = bridgeSecret || "尚未生成";
+    byId("pcHubSecret").dataset.copyValue = bridgeSecret;
+    byId("copyPcSecretButton").disabled = !bridgeSecret;
 
     const compatibleCount = providers.filter((provider) => provider.enabled && provider.bridgeCompatible === true).length;
     byId("bridgeProviderCount").textContent = `${compatibleCount} 个`;
@@ -1124,7 +1206,7 @@
         throw new Error("当前浏览器无法保存管理会话。");
       }
       await loadState({ initial: true });
-      showGlobalAlert("首次设置完成。请复制手机桥接 Secret，并连接 Codex。", "success", 6000);
+      showGlobalAlert("首次设置完成。请按开始页选择 PC 同步或 Codex 额度链路。", "success", 6000);
     } catch (error) {
       setFormMessage("setupMessage", error.message || "首次设置失败。", "error");
     } finally {
@@ -1141,20 +1223,20 @@
   }
 
   async function rotateBridgeSecret() {
-    if (!window.confirm("重新生成后，手机里的旧 Secret 会立即失效。继续吗？")) return;
+    if (!window.confirm("重新生成后，PC 采集器和手机里的旧连接 Key 都会立即失效。继续吗？")) return;
     const button = byId("rotateBridgeSecretButton");
     setButtonBusy(button, true, "生成中");
     try {
       const state = await api("/admin/api/bridge/rotate", { method: "POST" });
       currentState = state;
       renderState(state);
-      showGlobalAlert("新的手机桥接 Secret 已生成，请同步更新手机 App。", "success", 5000);
+      showGlobalAlert("新的设备连接 Key 已生成，请同步更新 PC 采集器和手机 App。", "success", 5000);
     } catch (error) {
       if (error.isAuthError) {
         clearToken();
         showLogin("管理会话已失效，请重新登录。", "error");
       } else {
-        showGlobalAlert(error.message || "Secret 生成失败。", "error");
+        showGlobalAlert(error.message || "连接 Key 生成失败。", "error");
       }
     } finally {
       setButtonBusy(button, false);
@@ -1635,16 +1717,22 @@
       writeClipboard(byId("bridgeEndpoint").dataset.copyValue || byId("bridgeEndpoint").textContent, "额度地址已复制。");
     });
     byId("copyBridgeSecretButton").addEventListener("click", () => {
-      writeClipboard(byId("bridgeSecret").dataset.copyValue || "", "手机桥接 Secret 已复制。");
+      writeClipboard(byId("bridgeSecret").dataset.copyValue || "", "设备连接 Key 已复制。");
+    });
+    byId("copyPcEndpointButton").addEventListener("click", () => {
+      writeClipboard(byId("pcHubEndpoint").dataset.copyValue || byId("pcHubEndpoint").textContent, "CW 地址已复制。");
+    });
+    byId("copyPcSecretButton").addEventListener("click", () => {
+      writeClipboard(byId("pcHubSecret").dataset.copyValue || "", "设备连接 Key 已复制。");
     });
     byId("rotateBridgeSecretButton").addEventListener("click", rotateBridgeSecret);
 
     document.querySelectorAll(".nav-link").forEach((link) => {
       link.addEventListener("click", () => {
-        document.querySelectorAll(".nav-link").forEach((item) => item.classList.remove("is-active"));
-        link.classList.add("is-active");
+        if (link.hash === window.location.hash) renderPage({ scrollToTop: true });
       });
     });
+    window.addEventListener("hashchange", () => renderPage({ scrollToTop: true }));
   }
 
   async function initialize() {
