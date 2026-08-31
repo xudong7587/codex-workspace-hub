@@ -26,7 +26,7 @@ Compose 会拉取公开的 amd64 `latest` 镜像，已按绿联 NAS 默认使用
 
 从 [Releases](https://github.com/xudong7587/vwatch-quota-hub/releases) 下载 `VWatchCollector.exe`。它是几十 KB 的单文件程序，不捆绑 Node.js、Python 或 Token Monitor。填写与手机相同的 Hub 地址和 Secret 即可。
 
-项目文档在本机加密后同步，Hub 看不到明文；冲突会保留副本。Compose 会把中转密文保存到同目录的 `sync-data`，方便在 NAS 上备份。这里不是可直接阅读的项目副本，请勿手工修改。Codex 对话目前只做安全备份，不会覆盖或合并 Codex 的运行中数据库。详情见 [`collector-windows/README.md`](collector-windows/README.md)。
+项目文档在本机加密后同步，Hub 看不到明文；冲突会保留副本。Compose 会自动创建同目录的 `codex-projects`，把各电脑上传的项目数据和对话备份持久化到 NAS。这里保存的是客户端加密数据，不是可直接阅读的项目副本，请勿手工修改。Codex 对话目前只做安全备份，不会覆盖或合并 Codex 的运行中数据库。详情见 [`collector-windows/README.md`](collector-windows/README.md)。
 
 ## 更新
 
