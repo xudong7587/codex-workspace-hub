@@ -17,12 +17,18 @@ namespace VWatchCollector {
     }
 
     public static class SyncEngine {
-        private static readonly HashSet<string> Extensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
-            ".md", ".txt", ".rst", ".csv", ".json", ".jsonl", ".toml", ".yaml", ".yml", ".xml",
-            ".docx", ".xlsx", ".pptx", ".pdf"
-        };
         private static readonly HashSet<string> Skipped = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
-            ".git", ".svn", "node_modules", ".venv", "venv", "bin", "obj", "dist", "build"
+            ".git", ".svn", ".hg", ".codex", ".ssh", ".vs", ".idea", ".gradle", ".cache", ".next", ".nuxt", ".turbo",
+            "node_modules", ".venv", "venv", "__pycache__", "bin", "obj", "dist", "build", "target", "out", "coverage"
+        };
+        private static readonly HashSet<string> SecretNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
+            ".env", "auth.json", "credentials.json", "secrets.json", "id_rsa", "id_ed25519"
+        };
+        private static readonly HashSet<string> SecretExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
+            ".pem", ".key", ".p12", ".pfx", ".jks", ".keystore"
+        };
+        private static readonly HashSet<string> TemporaryExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
+            ".tmp", ".temp", ".swp", ".swo", ".lock", ".log"
         };
 
         public static void SyncConfigured(CollectorConfig config, HubClient hub, Action<string> log) {
@@ -62,7 +68,7 @@ namespace VWatchCollector {
 
             List<Dictionary<string, object>> pending = new List<Dictionary<string, object>>();
             int pendingEncodedBytes = 0;
-            foreach (string file in EnumerateDocuments(root, backupOnly)) {
+            foreach (string file in EnumerateFiles(root, backupOnly, backupOnly ? 120 : 5)) {
                 string relative = Relative(root, file);
                 byte[] plain;
                 try { plain = File.ReadAllBytes(file); } catch (IOException) { continue; }
@@ -107,7 +113,7 @@ namespace VWatchCollector {
                 string localHash = HashFile(destination);
                 bool localChanged = previous == null ? localHash != remoteHash : localHash != previous.Hash;
                 if (localChanged && localHash != remoteHash) {
-                    string conflict = destination + ".vwatch-conflict-" + DateTime.Now.ToString("yyyyMMdd-HHmmssfff");
+                    string conflict = destination + ".codex-sync-conflict-" + DateTime.Now.ToString("yyyyMMdd-HHmmssfff");
                     Directory.CreateDirectory(Path.GetDirectoryName(conflict));
                     File.Copy(destination, conflict, false);
                     log("检测到双端修改，已保留冲突副本：" + conflict);
@@ -138,7 +144,8 @@ namespace VWatchCollector {
             files.Clear();
         }
 
-        private static IEnumerable<string> EnumerateDocuments(string root, bool jsonlOnly) {
+        private static IEnumerable<string> EnumerateFiles(string root, bool jsonlOnly, int stableSeconds) {
+            DateTime stableBefore = DateTime.UtcNow.AddSeconds(-Math.Max(1, stableSeconds));
             Stack<string> pending = new Stack<string>(); pending.Push(root);
             while (pending.Count > 0) {
                 string folder = pending.Pop();
@@ -149,7 +156,17 @@ namespace VWatchCollector {
                 try { files = Directory.GetFiles(folder); } catch { continue; }
                 foreach (string file in files) {
                     string ext = Path.GetExtension(file);
-                    if ((jsonlOnly && ext.Equals(".jsonl", StringComparison.OrdinalIgnoreCase)) || (!jsonlOnly && Extensions.Contains(ext))) yield return file;
+                    DateTime modified;
+                    try { modified = File.GetLastWriteTimeUtc(file); } catch { continue; }
+                    if (modified > stableBefore) continue;
+                    if (jsonlOnly) {
+                        if (ext.Equals(".jsonl", StringComparison.OrdinalIgnoreCase)) yield return file;
+                        continue;
+                    }
+                    string name = Path.GetFileName(file);
+                    if (SecretNames.Contains(name) || name.StartsWith(".env.", StringComparison.OrdinalIgnoreCase)) continue;
+                    if (SecretExtensions.Contains(ext) || TemporaryExtensions.Contains(ext)) continue;
+                    yield return file;
                 }
             }
         }

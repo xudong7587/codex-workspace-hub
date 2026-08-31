@@ -26,7 +26,7 @@ async function withServer(run) {
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const baseUrl = `http://127.0.0.1:${server.address().port}`;
   try {
-    await run(baseUrl, usageStore);
+    await run(baseUrl, usageStore, syncStore);
   } finally {
     await new Promise((resolve) => server.close(resolve));
     await rm(dataDir, { recursive: true, force: true });
@@ -56,8 +56,8 @@ test("collector usage replaces one device and aggregates multiple devices", asyn
   });
 });
 
-test("collector sync stores opaque blobs and rejects stale base revisions", async () => {
-  await withServer(async (baseUrl) => {
+test("collector sync stores opaque blobs, reports workspaces, and rejects stale base revisions", async () => {
+  await withServer(async (baseUrl, usageStore, syncStore) => {
     const hashA = "a".repeat(64);
     const hashB = "b".repeat(64);
     const first = await post(baseUrl, "/api/collector/v1/sync/push", {
@@ -74,6 +74,11 @@ test("collector sync stores opaque blobs and rejects stale base revisions", asyn
     const pull = await post(baseUrl, "/api/collector/v1/sync/pull", { workspaceId: "notes", sinceRevision: 0 });
     const pullBody = await pull.json();
     assert.equal(Buffer.from(pullBody.files[0].blob, "base64").toString(), "cipher-a");
+    const summary = await syncStore.getSummary();
+    assert.equal(summary.workspaceCount, 1);
+    assert.equal(summary.fileCount, 1);
+    assert.equal(summary.totalBytes, 3);
+    assert.deepEqual(summary.devices.map((device) => device.id), ["office-pc"]);
   });
 });
 

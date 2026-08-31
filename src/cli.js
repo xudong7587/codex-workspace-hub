@@ -166,7 +166,7 @@ export async function runServe(config, options = {}) {
   });
   await startGatewayServer(server, config);
   const address = server.address();
-  logger.info("VWatch Quota Hub listening", {
+  logger.info("Codex Workspace Hub listening", {
     host: typeof address === "object" && address ? address.address : config.host,
     port: typeof address === "object" && address ? address.port : config.port,
   });
@@ -198,7 +198,7 @@ export async function runServe(config, options = {}) {
 
   try {
     const signal = await shutdown;
-    logger.info("Shutting down VWatch Quota Hub", { signal });
+    logger.info("Shutting down Codex Workspace Hub", { signal });
   } finally {
     await closeGatewayServer(server).catch((error) => {
       logger.warn("HTTP server shutdown failed", { error: error.message });
@@ -261,7 +261,7 @@ export async function runStatus(config, options = {}) {
 function printHelp(stream) {
   line(stream, "Usage: node src/cli.js <serve|login|status>");
   line(stream, "");
-  line(stream, "  serve   Start VWatch Quota Hub");
+  line(stream, "  serve   Start Codex Workspace Hub");
   line(stream, "  login   Sign in to Codex using a device code");
   line(stream, "  status  Refresh and print the current Hub status");
 }

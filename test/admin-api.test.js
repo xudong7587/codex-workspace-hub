@@ -51,7 +51,7 @@ function createManager(overrides = {}) {
     calls,
     loginManager,
     getAdminState() {
-      return { productName: "VWatch Quota Hub", settings: {} };
+      return { productName: "Codex Workspace Hub", settings: {} };
     },
     async updateSettings(body) {
       calls.push(["settings", structuredClone(body)]);
@@ -99,7 +99,7 @@ test("admin API requires the dedicated Bearer token", async () => {
     "/admin/api/state",
   );
   assert.equal(accepted.statusCode, 200);
-  assert.equal(accepted.payload.productName, "VWatch Quota Hub");
+  assert.equal(accepted.payload.productName, "Codex Workspace Hub");
 });
 
 test("panel setup creates a session and manages the generated bridge secret", async () => {

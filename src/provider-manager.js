@@ -383,7 +383,7 @@ export class ProviderManager {
       });
     }
     return {
-      productName: "VWatch Quota Hub",
+      productName: "Codex Workspace Hub",
       version: APP_VERSION,
       settings: {
         pollIntervalSeconds: this.settings.pollIntervalSeconds,

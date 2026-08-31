@@ -1,15 +1,15 @@
-# VWatch Windows 采集器
+# Codex Workspace Collector
 
-无需安装 Node.js 或 Python 的单文件托盘程序，常驻采集本机 Codex token，并发送到 VWatch Quota Hub。
+无需安装 Node.js 或 Python 的单文件 Windows 托盘程序。它负责采集本机 Codex token，并通过 Codex Workspace Hub 在多台电脑间同步项目、备份对话。
 
-首次运行填写：
+首次运行填写 Hub HTTPS 根地址、管理面板中的手机桥接 Secret，以及需要同步的项目文件夹。同一项目在各电脑必须使用相同的同步名称。
 
-- 手机正在使用的 Hub HTTPS 根地址；
-- 管理面板中的手机桥接 Secret；
-- 需要同步的项目文档文件夹。
+同步模式：
 
-项目文档会先在电脑上加密，再经 Hub 双向同步；Hub 只保存密文。发生双端修改时会保留 `.vwatch-conflict-*` 副本，不自动删除文件。
+- 智能同步（默认）：文件变化只触发一次延迟检查，连续 90 秒没有新写入后再同步；每天多个设定时间兜底。
+- 仅定时：只在设定的多个 `HH:mm` 时间同步。
+- 仅手动：只通过托盘菜单同步。
 
-Codex 对话只做跨电脑的加密增量备份，下载到 `%LOCALAPPDATA%\VWatchCollector\ConversationBackups`，不会覆盖 Codex 正在使用的数据文件。
+项目文件在本机加密，Hub 只保存密文。发生双端修改时保留 `.codex-sync-conflict-*` 副本，不传播删除操作。`.git`、依赖和构建目录、`.env` 与常见私钥文件不会上传。
 
-双击托盘图标可修改设置，右键可以立即采集、查看日志或打开备份目录。
+Codex 对话只在 JSONL 停止写入 120 秒后备份到 `%LOCALAPPDATA%\VWatchCollector\ConversationBackups`，不会写入另一台电脑的实时 `.codex` 目录。

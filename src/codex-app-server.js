@@ -6,7 +6,7 @@ import { APP_VERSION } from "./version.js";
 
 const DEFAULT_CLIENT_INFO = Object.freeze({
   name: "vwatch-quota-hub",
-  title: "VWatch Quota Hub",
+  title: "Codex Workspace Hub",
   version: APP_VERSION,
 });
 

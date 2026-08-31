@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { mkdir, open, readFile, rename, unlink } from "node:fs/promises";
+import { mkdir, open, readFile, readdir, rename, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 const SCHEMA_VERSION = 1;
@@ -90,6 +90,51 @@ export class SyncStore {
       files.push({ ...entry, blob: blob.toString("base64") });
     }
     return { workspaceId: manifest.workspaceId, revision: manifest.revision, files };
+  }
+
+  async getSummary() {
+    let directories = [];
+    try {
+      directories = await readdir(this.root, { withFileTypes: true });
+    } catch (error) {
+      if (error?.code === "ENOENT") return { workspaceCount: 0, fileCount: 0, totalBytes: 0, devices: [], workspaces: [] };
+      throw error;
+    }
+    const workspaces = [];
+    const devices = new Map();
+    for (const directory of directories) {
+      if (!directory.isDirectory()) continue;
+      let manifest;
+      try { manifest = await this.readManifest(directory.name); } catch { continue; }
+      const files = Object.values(manifest.files || {});
+      let totalBytes = 0;
+      let updatedAt = null;
+      for (const file of files) {
+        totalBytes += Math.max(0, Number(file.size) || 0);
+        if (!updatedAt || Date.parse(file.updatedAt || 0) > Date.parse(updatedAt)) updatedAt = file.updatedAt || updatedAt;
+        if (file.deviceId) {
+          const previous = devices.get(file.deviceId);
+          if (!previous || Date.parse(file.updatedAt || 0) > Date.parse(previous)) devices.set(file.deviceId, file.updatedAt || null);
+        }
+      }
+      workspaces.push({
+        id: manifest.workspaceId,
+        kind: manifest.workspaceId.startsWith("codex-chats-") ? "conversation-backup" : "project",
+        revision: manifest.revision,
+        fileCount: files.length,
+        totalBytes,
+        updatedAt,
+      });
+    }
+    workspaces.sort((left, right) => Date.parse(right.updatedAt || 0) - Date.parse(left.updatedAt || 0));
+    return {
+      workspaceCount: workspaces.filter((item) => item.kind === "project").length,
+      conversationBackupCount: workspaces.filter((item) => item.kind === "conversation-backup").length,
+      fileCount: workspaces.reduce((sum, item) => sum + item.fileCount, 0),
+      totalBytes: workspaces.reduce((sum, item) => sum + item.totalBytes, 0),
+      devices: [...devices].map(([id, lastSeenAt]) => ({ id, lastSeenAt })),
+      workspaces,
+    };
   }
 
   async push(workspaceId, deviceId, inputFiles) {

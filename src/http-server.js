@@ -108,6 +108,7 @@ export function createGatewayServer(input, maybeOptions = {}) {
     adminToken: config.adminToken,
     credentialStore,
     usageStore,
+    syncStore,
     logger,
   });
   const handleCollectorApi = options.handleCollectorApi || createCollectorApi({ usageStore, syncStore });

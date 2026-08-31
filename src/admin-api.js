@@ -99,6 +99,7 @@ export function createAdminApi(options = {}) {
   const adminToken = options.adminToken || "";
   const credentialStore = options.credentialStore || null;
   const usageStore = options.usageStore || null;
+  const syncStore = options.syncStore || null;
   const logger = options.logger || null;
   if (!providerManager) throw new TypeError("createAdminApi requires providerManager");
   let refreshedLoginId = null;
@@ -130,11 +131,12 @@ export function createAdminApi(options = {}) {
     }
     return true;
   };
-  const adminState = () => {
+  const adminState = async () => {
     const state = providerManager.getAdminState();
     const enriched = {
       ...state,
       usage: usageStore?.get?.() || null,
+      sync: await syncStore?.getSummary?.() || null,
     };
     if (!credentialStore) return enriched;
     return {
@@ -221,7 +223,7 @@ export function createAdminApi(options = {}) {
         if (request.method !== "GET" && request.method !== "HEAD") {
           return result(405, { error: "method_not_allowed" }, { Allow: "GET, HEAD" });
         }
-        return result(200, adminState());
+        return result(200, await adminState());
       }
 
       if (credentialStore && pathname === "/admin/api/bridge/rotate") {
@@ -229,7 +231,7 @@ export function createAdminApi(options = {}) {
           return result(405, { error: "method_not_allowed" }, { Allow: "POST" });
         }
         await credentialStore.rotateBridgeSecret();
-        return result(200, adminState());
+        return result(200, await adminState());
       }
 
       if (pathname === "/admin/api/settings") {
@@ -245,7 +247,7 @@ export function createAdminApi(options = {}) {
           return result(405, { error: "method_not_allowed" }, { Allow: "POST" });
         }
         await providerManager.pollNow(null, { manual: true });
-        return result(200, adminState());
+        return result(200, await adminState());
       }
 
       if (pathname === "/admin/api/usage") {
@@ -257,7 +259,7 @@ export function createAdminApi(options = {}) {
         }
         const body = await readJsonBody(request);
         await usageStore.replace(body);
-        return result(200, adminState());
+        return result(200, await adminState());
       }
 
       const providerRoute = routeProvider(pathname);
@@ -278,7 +280,7 @@ export function createAdminApi(options = {}) {
           return result(405, { error: "method_not_allowed" }, { Allow: "POST" });
         }
         await providerManager.pollNow(providerRoute.providerId, { manual: true });
-        return result(200, adminState());
+        return result(200, await adminState());
       }
 
       if (providerRoute.action === "login" && providerRoute.providerId === "codex") {

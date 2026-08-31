@@ -1,6 +1,6 @@
-# VWatch Quota Hub 协议说明
+# Codex Workspace Hub 协议说明
 
-本文定义 VWatch Quota Hub、provider 与现有“额度桥接”APK 之间的协议和安全边界。正确链路是：
+本文定义 Codex Workspace Hub、provider 与现有“额度桥接”APK 之间的协议和安全边界。正确链路是：
 
 ```text
 手表 ↔ 手机额度桥接 ↔ HTTPS Hub ↔ provider

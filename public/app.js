@@ -323,6 +323,7 @@
     const settings = state.settings && typeof state.settings === "object" ? state.settings : {};
     const bridge = state.bridge && typeof state.bridge === "object" ? state.bridge : {};
     const providers = Array.isArray(state.providers) ? state.providers.filter(isProvider) : [];
+    const sync = state.sync && typeof state.sync === "object" ? state.sync : {};
 
     byId("appVersion").textContent = typeof state.version === "string" && state.version
       ? `v${state.version}`
@@ -353,9 +354,13 @@
       ? formatBytes(Number(state.runtime.rssBytes))
       : "未提供";
 
-    const enabledProviders = providers.filter((provider) => provider.enabled);
-    byId("enabledProviderCount").textContent = `${enabledProviders.length} 个连接`;
-    byId("latestUpdateTime").textContent = findLatestUpdate(providers);
+    const devices = mergeCollectorDevices(state.usage, sync);
+    byId("enabledProviderCount").textContent = devices.length ? `${devices.length} 台设备` : "等待采集器";
+    byId("latestUpdateTime").textContent = findLatestSyncActivity(state.usage, sync) || "尚无同步";
+    byId("syncProjectCount").textContent = `${toFiniteNumber(sync.workspaceCount, 0)} 个`;
+    byId("syncFileCount").textContent = `${toFiniteNumber(sync.fileCount, 0)} 个`;
+    byId("syncStorage").textContent = formatBytes(toFiniteNumber(sync.totalBytes, 0));
+    byId("syncConversationCount").textContent = `${toFiniteNumber(sync.conversationBackupCount, 0)} 个`;
 
     const hubStatus = getHubStatus(state, providers);
     setBadge(byId("hubStatusBadge"), hubStatus);
@@ -363,6 +368,7 @@
 
     renderCoreQuotaDock(providers);
     renderUsageHistory(state.usage);
+    renderSyncConsole(state.usage, sync);
     renderBridge(bridge, providers);
     renderProviders(providers);
   }
@@ -472,6 +478,70 @@
     byId("usageHistorySource").textContent = available
       ? `${usage.deviceCount || 1} 台采集器 · ${formatDateTime(usage.capturedAt)}`
       : "等待 Windows 采集器";
+  }
+
+  function mergeCollectorDevices(usage, sync) {
+    const values = new Map();
+    for (const item of Array.isArray(sync?.devices) ? sync.devices : []) {
+      if (!item?.id) continue;
+      values.set(item.id, { id: item.id, lastSeenAt: item.lastSeenAt || null, sources: ["项目同步"] });
+    }
+    for (const item of Array.isArray(usage?.devices) ? usage.devices : []) {
+      if (!item?.id) continue;
+      const current = values.get(item.id) || { id: item.id, lastSeenAt: null, sources: [] };
+      if (!current.sources.includes("额度采集")) current.sources.push("额度采集");
+      if (!current.lastSeenAt || Date.parse(item.capturedAt || 0) > Date.parse(current.lastSeenAt || 0)) current.lastSeenAt = item.capturedAt || current.lastSeenAt;
+      current.totalTokens = item.totalTokens;
+      values.set(item.id, current);
+    }
+    return [...values.values()].sort((left, right) => Date.parse(right.lastSeenAt || 0) - Date.parse(left.lastSeenAt || 0));
+  }
+
+  function findLatestSyncActivity(usage, sync) {
+    const values = [usage?.capturedAt];
+    for (const workspace of Array.isArray(sync?.workspaces) ? sync.workspaces : []) values.push(workspace?.updatedAt);
+    for (const device of Array.isArray(sync?.devices) ? sync.devices : []) values.push(device?.lastSeenAt);
+    const timestamps = values.map((value) => Date.parse(value || "")).filter(Number.isFinite);
+    return timestamps.length ? formatDateTime(new Date(Math.max(...timestamps)).toISOString()) : "";
+  }
+
+  function renderSyncConsole(usage, sync) {
+    const devices = mergeCollectorDevices(usage, sync);
+    const deviceList = byId("deviceList");
+    deviceList.replaceChildren();
+    byId("deviceCountBadge").textContent = `${devices.length} 台`;
+    if (!devices.length) {
+      const empty = document.createElement("p"); empty.className = "empty-metric"; empty.textContent = "等待 Windows 采集器连接"; deviceList.append(empty);
+    }
+    for (const device of devices) {
+      const row = document.createElement("div"); row.className = "entity-row";
+      const mark = document.createElement("span"); mark.className = "entity-mark"; mark.textContent = device.id.slice(0, 1).toUpperCase();
+      const copy = document.createElement("div");
+      const title = document.createElement("strong"); title.textContent = device.id;
+      const meta = document.createElement("small"); meta.textContent = `${device.sources.join(" · ")} · ${device.lastSeenAt ? formatDateTime(device.lastSeenAt) : "等待首次上报"}`;
+      copy.append(title, meta);
+      const status = document.createElement("span");
+      const recent = device.lastSeenAt && Date.now() - Date.parse(device.lastSeenAt) < 30 * 60_000;
+      status.className = recent ? "entity-status is-online" : "entity-status"; status.textContent = recent ? "最近在线" : "待连接";
+      row.append(mark, copy, status); deviceList.append(row);
+    }
+
+    const workspaces = Array.isArray(sync?.workspaces) ? sync.workspaces : [];
+    const workspaceList = byId("workspaceList"); workspaceList.replaceChildren();
+    byId("workspaceCountBadge").textContent = `${toFiniteNumber(sync?.workspaceCount, 0)} 个项目`;
+    if (!workspaces.length) {
+      const empty = document.createElement("p"); empty.className = "empty-metric"; empty.textContent = "还没有项目或对话备份"; workspaceList.append(empty);
+    }
+    for (const workspace of workspaces.slice(0, 12)) {
+      const row = document.createElement("div"); row.className = "entity-row";
+      const mark = document.createElement("span"); mark.className = `entity-mark ${workspace.kind === "conversation-backup" ? "is-chat" : ""}`; mark.textContent = workspace.kind === "conversation-backup" ? "聊" : "项";
+      const copy = document.createElement("div");
+      const title = document.createElement("strong"); title.textContent = workspace.id;
+      const meta = document.createElement("small"); meta.textContent = `${workspace.fileCount || 0} 个文件 · ${formatBytes(Number(workspace.totalBytes) || 0)} · r${workspace.revision || 0}`;
+      copy.append(title, meta);
+      const time = document.createElement("span"); time.className = "entity-status"; time.textContent = workspace.updatedAt ? formatDateTime(workspace.updatedAt) : "等待数据";
+      row.append(mark, copy, time); workspaceList.append(row);
+    }
   }
 
   function formatTokenCount(value) {

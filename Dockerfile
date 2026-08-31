@@ -6,8 +6,8 @@ RUN apk add --no-cache binutils \
 
 FROM alpine:3.21
 
-LABEL org.opencontainers.image.title="VWatch Quota Hub" \
-      org.opencontainers.image.description="Low-memory multi-provider quota hub for VWatch" \
+LABEL org.opencontainers.image.title="Codex Workspace Hub" \
+      org.opencontainers.image.description="Low-memory multi-device Codex workspace, conversation backup, and quota hub" \
       org.opencontainers.image.source="https://github.com/xudong7587/vwatch-quota-hub"
 
 RUN apk add --no-cache ca-certificates libstdc++ su-exec tzdata \

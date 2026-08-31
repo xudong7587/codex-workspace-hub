@@ -8,7 +8,7 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
     >
-    <title>VWatch Quota Hub</title>
+    <title>Codex Workspace Hub</title>
     <link rel="stylesheet" href="/admin/app.css">
     <script src="/admin/app.js" defer></script>
   </head>
@@ -19,11 +19,11 @@
       <div class="noscript-message">管理面板需要 JavaScript 才能运行。</div>
     </noscript>
 
-    <main class="login-view" id="loginView" aria-label="额度 Hub 管理入口">
+    <main class="login-view" id="loginView" aria-label="Codex Workspace Hub 管理入口">
       <section class="login-panel">
-        <div class="brand-lockup" aria-label="VWatch Quota Hub">
-          <span class="brand-mark" aria-hidden="true">VQ</span>
-          <span>VWatch Quota Hub</span>
+        <div class="brand-lockup" aria-label="Codex Workspace Hub">
+          <span class="brand-mark" aria-hidden="true">CW</span>
+          <span>Codex Workspace Hub</span>
         </div>
         <div id="setupContent" hidden>
           <div class="login-copy">
@@ -47,7 +47,7 @@
         <div id="loginContent" hidden>
           <div class="login-copy">
             <p class="eyebrow">本地管理</p>
-            <h1>登录额度 Hub</h1>
+            <h1>登录同步中心</h1>
             <p>输入首次设置的管理密码。登录会话只保存在当前浏览器标签页。</p>
           </div>
           <form id="loginForm" class="stack-form" novalidate>
@@ -66,11 +66,11 @@
     <div class="app-shell" id="appView" hidden>
       <header class="shell-header">
         <div class="header-inner">
-          <a class="sidebar-brand" href="#overview" aria-label="VWatch Quota Hub 首页">
-            <span class="brand-mark" aria-hidden="true">VQ</span>
+          <a class="sidebar-brand" href="#overview" aria-label="Codex Workspace Hub 首页">
+            <span class="brand-mark" aria-hidden="true">CW</span>
             <span class="brand-copy">
-              <strong class="brand-name">VWatch Quota Hub</strong>
-              <small>AI 额度桥接工作台 · <span id="appVersion">读取版本</span></small>
+              <strong class="brand-name">Codex Workspace Hub</strong>
+              <small>多设备项目、对话与额度同步中心 · <span id="appVersion">读取版本</span></small>
             </span>
           </a>
 
@@ -92,10 +92,12 @@
 
       <div class="shell-main">
         <nav class="sidebar-nav" aria-label="主导航">
-          <a class="nav-link is-active" href="#overview">概览</a>
-          <a class="nav-link" href="#settings">刷新设置</a>
-          <a class="nav-link" href="#providers">AI 连接</a>
-          <a class="nav-link" href="#bridge">手表桥接</a>
+          <a class="nav-link is-active" href="#overview">同步总览</a>
+          <a class="nav-link" href="#workspaces">项目与设备</a>
+          <a class="nav-link" href="#sync-strategy">同步机制</a>
+          <a class="nav-link" href="#settings">额度调度</a>
+          <a class="nav-link" href="#providers">Codex 与 AI</a>
+          <a class="nav-link" href="#bridge">手表桥接 · 附加</a>
         </nav>
 
         <div class="workspace-layout">
@@ -122,46 +124,75 @@
             <section class="page-section" id="overview" aria-labelledby="overviewTitle">
               <div class="page-heading">
                 <div>
-                  <p class="eyebrow">运行概览</p>
-                  <h1 id="overviewTitle">额度连接，一处维护</h1>
-                  <p>Hub 定时读取各 AI 服务的额度信息，再按桥接协议提供给手机和手表。</p>
+                  <p class="eyebrow">多设备开发中枢</p>
+                  <h1 id="overviewTitle">让每台电脑接着上一台继续</h1>
+                  <p>集中同步 Codex 项目文件、安全备份对话进度，并把各设备的 token 使用汇总到一个地方。</p>
                 </div>
                 <dl class="heading-facts">
                   <div>
-                    <dt>已启用</dt>
-                    <dd id="enabledProviderCount">0 个连接</dd>
+                    <dt>已连接设备</dt>
+                    <dd id="enabledProviderCount">等待采集器</dd>
                   </div>
                   <div>
-                    <dt>最近更新</dt>
+                    <dt>最近同步活动</dt>
                     <dd id="latestUpdateTime">尚无数据</dd>
                   </div>
                 </dl>
               </div>
 
               <div class="overview-grid">
-                <article class="surface status-surface">
+                <article class="surface status-surface sync-primary-card">
                   <div class="surface-heading">
                     <div>
-                      <p class="section-kicker">Hub</p>
-                      <h2>服务状态</h2>
+                      <p class="section-kicker">Workspace sync</p>
+                      <h2>同步中心</h2>
                     </div>
                     <span class="badge badge-neutral" id="hubStatusBadge">读取中</span>
                   </div>
                   <dl class="detail-list">
                     <div>
-                      <dt>刷新间隔</dt>
+                      <dt>项目</dt>
+                      <dd id="syncProjectCount">0 个</dd>
+                    </div>
+                    <div>
+                      <dt>已同步文件</dt>
+                      <dd id="syncFileCount">0 个</dd>
+                    </div>
+                    <div>
+                      <dt>项目数据量</dt>
+                      <dd id="syncStorage">0 B</dd>
+                    </div>
+                    <div>
+                      <dt>对话备份库</dt>
+                      <dd id="syncConversationCount">0 个</dd>
+                    </div>
+                  </dl>
+                  <a class="button button-primary button-small" href="#workspaces">查看项目与设备</a>
+                </article>
+
+                <article class="surface status-surface">
+                  <div class="surface-heading">
+                    <div>
+                      <p class="section-kicker">Runtime</p>
+                      <h2>Hub 运行状态</h2>
+                    </div>
+                    <span class="badge badge-success">低资源运行</span>
+                  </div>
+                  <dl class="detail-list compact-details">
+                    <div>
+                      <dt>额度采集间隔</dt>
                       <dd id="hubPollInterval">5 分钟</dd>
                     </div>
                     <div>
-                      <dt>数据过期时间</dt>
+                      <dt>额度过期时间</dt>
                       <dd id="hubStaleInterval">15 分钟</dd>
                     </div>
                     <div>
-                      <dt>自动刷新时段</dt>
+                      <dt>额度刷新时段</dt>
                       <dd id="hubRefreshWindow">全天</dd>
                     </div>
                     <div>
-                      <dt>连接器总数</dt>
+                      <dt>AI 连接器</dt>
                       <dd id="providerCount">0</dd>
                     </div>
                     <div>
@@ -170,45 +201,52 @@
                     </div>
                   </dl>
                 </article>
+              </div>
+            </section>
 
-                <article class="surface status-surface" id="bridge">
-                  <div class="surface-heading">
-                    <div>
-                      <p class="section-kicker">Bridge</p>
-                      <h2>手机与手表</h2>
-                    </div>
-                    <span class="badge badge-neutral" id="bridgeStatusBadge">读取中</span>
-                  </div>
-                  <dl class="detail-list">
-                    <div>
-                      <dt>额度地址</dt>
-                      <dd class="endpoint-value" id="bridgeEndpoint">/api/stats</dd>
-                    </div>
-                    <div>
-                      <dt>访问密钥</dt>
-                      <dd class="endpoint-value"><code id="bridgeSecret">读取中</code></dd>
-                    </div>
-                    <div>
-                      <dt>手表可用连接</dt>
-                      <dd id="bridgeProviderCount">0</dd>
-                    </div>
-                  </dl>
-                  <div class="button-row align-start">
-                    <button class="button button-quiet button-small" id="copyEndpointButton" type="button">复制额度地址</button>
-                    <button class="button button-quiet button-small" id="copyBridgeSecretButton" type="button">复制 Secret</button>
-                    <button class="button button-quiet button-small button-danger-text" id="rotateBridgeSecretButton" type="button">重新生成</button>
-                  </div>
+            <section class="page-section" id="workspaces" aria-labelledby="workspacesTitle">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">设备与工作区</p>
+                  <h2 id="workspacesTitle">谁在同步，哪些项目已进入 Hub</h2>
+                </div>
+                <p>设备来自 Windows 采集器上报；项目数据始终以客户端密文保存在 NAS。</p>
+              </div>
+              <div class="sync-console-grid">
+                <article class="surface sync-console-card">
+                  <div class="surface-heading"><div><p class="section-kicker">Devices</p><h3>连接设备</h3></div><span class="badge badge-neutral" id="deviceCountBadge">0 台</span></div>
+                  <div class="entity-list" id="deviceList"><p class="empty-metric">等待 Windows 采集器连接</p></div>
                 </article>
+                <article class="surface sync-console-card">
+                  <div class="surface-heading"><div><p class="section-kicker">Projects</p><h3>同步工作区</h3></div><span class="badge badge-neutral" id="workspaceCountBadge">0 个</span></div>
+                  <div class="entity-list" id="workspaceList"><p class="empty-metric">还没有项目数据</p></div>
+                </article>
+              </div>
+            </section>
+
+            <section class="page-section" id="sync-strategy" aria-labelledby="syncStrategyTitle">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">PC 端独立设置</p>
+                  <h2 id="syncStrategyTitle">变化触发，静默后提交，定时兜底</h2>
+                </div>
+                <p>每台电脑可以使用不同策略。具体时间和静默秒数只在 Windows 采集器中设置；Hub 不下发调度，只负责版本、冲突和密文中转。</p>
+              </div>
+              <div class="strategy-steps">
+                <article class="surface strategy-card"><span>01</span><h3>感知变化</h3><p>只把文件事件当作同步信号，不在每次写入时立刻上传。</p></article>
+                <article class="surface strategy-card"><span>02</span><h3>等待静默</h3><p>默认 90 秒无新变化才比较差异；运行中的对话 JSONL 至少稳定 120 秒。</p></article>
+                <article class="surface strategy-card"><span>03</span><h3>加密提交</h3><p>客户端加密后推送；冲突保留副本，不传播删除，不上传常见密钥。</p></article>
+                <article class="surface strategy-card"><span>04</span><h3>定时兜底</h3><p>每天多个可配置时间补查遗漏，网络恢复后也重新安排同步。</p></article>
               </div>
             </section>
 
             <section class="page-section" id="settings" aria-labelledby="settingsTitle">
               <div class="section-heading">
                 <div>
-                  <p class="eyebrow">调度</p>
-                  <h2 id="settingsTitle">刷新设置</h2>
+                  <p class="eyebrow">额度采集</p>
+                  <h2 id="settingsTitle">额度调度</h2>
                 </div>
-                <p>设置刷新间隔和每天自动读取额度的时段，减少空闲时的上游请求。</p>
+                <p>这里只控制 Hub 读取 AI 额度的频率，与各台 PC 的项目同步策略互不影响。</p>
               </div>
               <form class="surface settings-form" id="settingsForm" novalidate>
                 <div class="form-grid">
@@ -249,8 +287,8 @@
             <section class="page-section" id="providers" aria-labelledby="providersTitle">
               <div class="section-heading">
                 <div>
-                  <p class="eyebrow">连接器</p>
-                  <h2 id="providersTitle">AI 服务</h2>
+                  <p class="eyebrow">额度来源</p>
+                  <h2 id="providersTitle">Codex 与其他 AI 连接</h2>
                 </div>
                 <p>密钥输入框不会回填已有密钥。留空保存时保留服务端现有密钥。</p>
               </div>
@@ -377,6 +415,32 @@
                   </footer>
                 </article>
               </div>
+            </section>
+
+            <section class="page-section bridge-addon" id="bridge" aria-labelledby="bridgeTitle">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">附加能力</p>
+                  <h2 id="bridgeTitle">手机额度桥接与手表</h2>
+                </div>
+                <p>同步中心的额度数据可以继续通过现有 APK 和 vivo 健康通道发送到 OrbitV / VWatch 表盘。</p>
+              </div>
+              <article class="surface status-surface">
+                <div class="surface-heading">
+                  <div><p class="section-kicker">Compatibility bridge</p><h3>桥接连接参数</h3></div>
+                  <span class="badge badge-neutral" id="bridgeStatusBadge">读取中</span>
+                </div>
+                <dl class="detail-list bridge-detail-list">
+                  <div><dt>HTTPS Hub 地址</dt><dd class="endpoint-value" id="bridgeEndpoint">/api/stats</dd></div>
+                  <div><dt>设备连接 Key</dt><dd class="endpoint-value"><code id="bridgeSecret">读取中</code></dd></div>
+                  <div><dt>手表可用额度连接</dt><dd id="bridgeProviderCount">0</dd></div>
+                </dl>
+                <div class="button-row align-start">
+                  <button class="button button-quiet button-small" id="copyEndpointButton" type="button">复制 Hub 地址</button>
+                  <button class="button button-quiet button-small" id="copyBridgeSecretButton" type="button">复制连接 Key</button>
+                  <button class="button button-quiet button-small button-danger-text" id="rotateBridgeSecretButton" type="button">重新生成 Key</button>
+                </div>
+              </article>
             </section>
             </div>
           </main>

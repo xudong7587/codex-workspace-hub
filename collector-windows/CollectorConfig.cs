@@ -23,6 +23,9 @@ namespace VWatchCollector {
         public double UsdCnyRate { get; set; }
         public bool SyncProjectDocuments { get; set; }
         public bool BackupConversations { get; set; }
+        public string SyncMode { get; set; }
+        public int QuietSeconds { get; set; }
+        public string SyncTimes { get; set; }
         public bool StartWithWindows { get; set; }
         public List<SyncFolder> Folders { get; set; }
 
@@ -34,6 +37,9 @@ namespace VWatchCollector {
             UsdCnyRate = 7.2;
             SyncProjectDocuments = true;
             BackupConversations = true;
+            SyncMode = "smart";
+            QuietSeconds = 90;
+            SyncTimes = "08:00,12:00,18:00,23:00";
             Folders = new List<SyncFolder>();
         }
 
@@ -54,6 +60,10 @@ namespace VWatchCollector {
                 if (value == null) return new CollectorConfig();
                 if (value.Folders == null) value.Folders = new List<SyncFolder>();
                 if (value.IntervalMinutes < 1) value.IntervalMinutes = 5;
+                if (String.IsNullOrWhiteSpace(value.SyncMode)) value.SyncMode = "smart";
+                if (value.SyncMode != "smart" && value.SyncMode != "scheduled" && value.SyncMode != "manual") value.SyncMode = "smart";
+                if (value.QuietSeconds < 30 || value.QuietSeconds > 900) value.QuietSeconds = 90;
+                if (String.IsNullOrWhiteSpace(value.SyncTimes)) value.SyncTimes = "08:00,12:00,18:00,23:00";
                 if (String.IsNullOrWhiteSpace(value.DeviceId)) value.DeviceId = Slug(Environment.MachineName);
                 return value;
             } catch { return new CollectorConfig(); }
