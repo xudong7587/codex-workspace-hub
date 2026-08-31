@@ -40,9 +40,9 @@ PC 采集器不会上传或转移 Codex 登录凭据。CW 要在所有 PC 关机
 从旧仓库名迁移到 v0.9.0 时，先下载新版 `compose.yaml`，再执行：
 
 ```bash
-docker compose down
+docker compose down --remove-orphans
 docker compose pull
 docker compose up -d
 ```
 
-`docker compose down` 不会删除命名数据卷，已有管理设置和 Codex 授权会保留。此后普通更新只需执行后两行。镜像地址为 `ghcr.io/xudong7587/codex-workspace-hub:latest`。
+`--remove-orphans` 会清理旧服务名留下的容器，但不会删除命名数据卷，因此已有管理设置和 Codex 授权会保留。此后普通更新只需执行后两行。镜像地址为 `ghcr.io/xudong7587/codex-workspace-hub:latest`。
