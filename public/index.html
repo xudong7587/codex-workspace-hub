@@ -401,7 +401,7 @@
                   <p class="section-kicker">Tokens</p>
                   <h3 id="usageHistoryTitle">用量历史</h3>
                 </div>
-                <small id="usageHistorySource">尚未导入</small>
+                <small id="usageHistorySource">等待采集器</small>
               </div>
               <div class="usage-period-list">
                 <div class="usage-period">
@@ -410,9 +410,9 @@
                   <small id="usageDayValue">API 等价价值 —</small>
                 </div>
                 <div class="usage-period">
-                  <span>本月</span>
-                  <strong id="usageMonthTokens">—</strong>
-                  <small id="usageMonthValue">API 等价价值 —</small>
+                  <span>本周</span>
+                  <strong id="usageWeekTokens">—</strong>
+                  <small id="usageWeekValue">API 等价价值 —</small>
                 </div>
                 <div class="usage-period">
                   <span>累计</span>
@@ -420,15 +420,7 @@
                   <small id="usageTotalValue">API 等价价值 —</small>
                 </div>
               </div>
-              <div class="usage-import-controls">
-                <label for="usageUsdCnyRate">
-                  美元兑人民币
-                  <input id="usageUsdCnyRate" type="number" min="1" max="20" step="0.01" value="7.20">
-                </label>
-                <button class="button button-quiet button-small" id="usageImportButton" type="button">导入统计</button>
-                <input id="usageImportFile" type="file" accept="application/json,.json" hidden>
-              </div>
-              <p class="usage-history-note">选择 Token Monitor 的 collector-anchor.json；金额是按模型 API 单价折算的参考价值，并非订阅账单。</p>
+              <p class="usage-history-note">Windows 采集器会自动按设备去重并汇总；金额按各模型输入、缓存和输出 token 的 API 单价折算，并非订阅账单。</p>
             </section>
           </aside>
         </div>

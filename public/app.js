@@ -457,10 +457,9 @@
   function renderUsageHistory(usage) {
     const available = usage && typeof usage === "object" && usage.periods;
     const rate = available ? Number(usage.usdCnyRate) : 7.2;
-    byId("usageUsdCnyRate").value = Number.isFinite(rate) ? rate.toFixed(2) : "7.20";
     const rows = [
       ["day", "usageDayTokens", "usageDayValue"],
-      ["month", "usageMonthTokens", "usageMonthValue"],
+      ["week", "usageWeekTokens", "usageWeekValue"],
       ["total", "usageTotalTokens", "usageTotalValue"]
     ];
     for (const [period, tokenId, valueId] of rows) {
@@ -471,8 +470,8 @@
         : "API 等价价值 —";
     }
     byId("usageHistorySource").textContent = available
-      ? `Token Monitor · ${formatDateTime(usage.capturedAt)}`
-      : "尚未导入";
+      ? `${usage.deviceCount || 1} 台采集器 · ${formatDateTime(usage.capturedAt)}`
+      : "等待 Windows 采集器";
   }
 
   function formatTokenCount(value) {
@@ -488,66 +487,6 @@
       currency: "CNY",
       maximumFractionDigits: 2
     }).format(Number.isFinite(value) ? value : 0);
-  }
-
-  function tokenMonitorPeriod(value) {
-    const source = value && typeof value === "object" ? value : {};
-    const totalTokens = Math.max(0, Number(source.totalTokens) || 0);
-    const cacheReadTokens = Math.max(0, Number(source.cacheReadTokens) || 0);
-    const cacheWriteTokens = Math.max(0, Number(source.cacheWriteTokens) || 0);
-    const outputTokens = Math.max(0, Number(source.outputTokens) || 0);
-    return {
-      totalTokens,
-      inputTokens: Math.max(0, totalTokens - cacheReadTokens - cacheWriteTokens - outputTokens),
-      cacheReadTokens,
-      cacheWriteTokens,
-      outputTokens,
-      reasoningTokens: Math.max(0, Number(source.reasoningTokens) || 0),
-      messageCount: Math.max(0, Number(source.messageCount) || 0),
-      costUsd: Math.max(0, Number(source.costUsd) || 0)
-    };
-  }
-
-  async function importUsageHistory(file) {
-    const button = byId("usageImportButton");
-    setButtonBusy(button, true, "导入中");
-    try {
-      const raw = JSON.parse(await file.text());
-      if (!raw || typeof raw !== "object" || !raw.today || !raw.month || !raw.allTime) {
-        throw new Error("请选择 Token Monitor 的 collector-anchor.json 文件。");
-      }
-      const rate = Number(byId("usageUsdCnyRate").value);
-      if (!Number.isFinite(rate) || rate < 1 || rate > 20) {
-        throw new Error("美元兑人民币汇率需在 1 到 20 之间。");
-      }
-      const capturedAt = raw.fullScanAt || new Date().toISOString();
-      const dateKey = /^\d{4}-\d{2}-\d{2}$/.test(String(raw.dateKey || ""))
-        ? raw.dateKey
-        : new Date(capturedAt).toISOString().slice(0, 10);
-      const state = await api("/admin/api/usage", {
-        method: "PUT",
-        body: {
-          source: "token-monitor",
-          capturedAt,
-          dayKey: dateKey,
-          monthKey: dateKey.slice(0, 7),
-          usdCnyRate: rate,
-          periods: {
-            day: tokenMonitorPeriod(raw.today),
-            month: tokenMonitorPeriod(raw.month),
-            total: tokenMonitorPeriod(raw.allTime)
-          }
-        }
-      });
-      currentState = state;
-      renderState(state);
-      showGlobalAlert("Token 历史已导入。", "success", 3000);
-    } catch (error) {
-      showGlobalAlert(error.message || "Token 历史导入失败。", "error", 5000);
-    } finally {
-      setButtonBusy(button, false);
-      byId("usageImportFile").value = "";
-    }
   }
 
   function renderBridge(bridge, providers) {
@@ -1603,11 +1542,6 @@
     byId("retryButton").addEventListener("click", () => loadState({ initial: true }));
     byId("refreshAllButton").addEventListener("click", refreshAllProviders);
     byId("coreQuotaRefreshButton").addEventListener("click", refreshAllProviders);
-    byId("usageImportButton").addEventListener("click", () => byId("usageImportFile").click());
-    byId("usageImportFile").addEventListener("change", (event) => {
-      const file = event.target.files?.[0];
-      if (file) void importUsageHistory(file);
-    });
     byId("settingsForm").addEventListener("submit", handleSettingsSubmit);
     byId("codexForm").addEventListener("submit", handleCodexSubmit);
     byId("openrouterForm").addEventListener("submit", handleOpenRouterSubmit);

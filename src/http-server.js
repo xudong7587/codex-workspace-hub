@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 
 import { createAdminApi } from "./admin-api.js";
 import { authenticateRequest } from "./auth.js";
+import { createCollectorApi } from "./collector-api.js";
 
 const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_PUBLIC_DIR = join(MODULE_DIR, "..", "public");
@@ -94,6 +95,7 @@ export function createGatewayServer(input, maybeOptions = {}) {
   const providerManager = options.providerManager || options.quotaService;
   const credentialStore = options.credentialStore || null;
   const usageStore = options.usageStore || null;
+  const syncStore = options.syncStore || null;
   const logger = options.logger || null;
   const bridgeSecret = () => credentialStore?.getBridgeSecret()
     || config.tokenMonitorSecret
@@ -108,6 +110,7 @@ export function createGatewayServer(input, maybeOptions = {}) {
     usageStore,
     logger,
   });
+  const handleCollectorApi = options.handleCollectorApi || createCollectorApi({ usageStore, syncStore });
 
   return createServer((request, response) => {
     void (async () => {
@@ -115,6 +118,20 @@ export function createGatewayServer(input, maybeOptions = {}) {
 
       if (pathname.startsWith("/admin/api/")) {
         const result = await handleAdminApi(request, pathname);
+        writeJson(request, response, result.statusCode, result.payload, result.headers);
+        return;
+      }
+
+      if (pathname.startsWith("/api/collector/v1/")) {
+        if (!hasCredentialHeaders(request)) {
+          writeJson(request, response, 401, { error: "authentication_required" }, { "WWW-Authenticate": "Bearer" });
+          return;
+        }
+        if (!authenticateRequest(request, bridgeSecret())) {
+          writeJson(request, response, 403, { error: "forbidden" });
+          return;
+        }
+        const result = await handleCollectorApi(request, pathname);
         writeJson(request, response, result.statusCode, result.payload, result.headers);
         return;
       }

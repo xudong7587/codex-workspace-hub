@@ -1,60 +1,38 @@
 # VWatch Quota Hub
 
-给 VWatch/OrbitV 额度表盘使用的轻量 Hub，用 NAS 替代需要常驻 PC 的 Token Monitor：
+给 OrbitV / VWatch 额度表盘使用的轻量 Hub：
 
 ```text
-手表 ↔ 手机额度桥接 ↔ HTTPS VWatch Quota Hub ↔ Codex
+手表 ↔ 手机额度桥接 ↔ HTTPS Hub ↔ Codex
+                              ↕
+                     Windows 采集器 / 多电脑
 ```
 
-Codex 已支持完整额度链路；DeepSeek 继续由手机端处理。Hub 直接完成 Codex 登录和额度查询，不再内置庞大的 Codex CLI。默认每 5 分钟刷新，也可在管理面板限制每天的自动刷新时段；镜像和常驻内存都控制在几十 MiB。
+Hub 支持 Codex 登录与额度查询，默认每 5 分钟刷新，也可限制每天的刷新时段。Windows 采集器会汇总日、周、月、累计 token 和按模型 API 单价折算的人民币参考价值，还可通过 Hub 加密同步多台电脑的项目文档。
 
-右侧额度面板可直接手动刷新。若要查看今日、本月和累计 token 及人民币 API 等价价值，在“用量历史”中选择 Token Monitor 数据目录里的 `collector-anchor.json` 即可导入；汇率可在导入前调整。该金额是按模型 API 单价折算的参考值，不是 ChatGPT/Codex 订阅账单。
+## Docker 部署
 
-## 部署
-
-下载仓库里的 [`compose.yaml`](compose.yaml)，放到 NAS 的任意空目录，然后运行：
+只需下载 [`compose.yaml`](compose.yaml)：
 
 ```bash
 docker compose up -d
 ```
 
-不需要 `.env`，也不需要手工生成任何 Key。Compose 会直接拉取 GitHub Container Registry 中公开的 amd64 `latest` 镜像；运行版本会显示在管理面板左上角。
+Compose 会拉取公开的 amd64 `latest` 镜像，已按绿联 NAS 默认使用 `PUID=1000`、`PGID=10`。不需要 `.env`，Key 会在首次打开管理面板时生成。
 
-Compose 已按绿联 NAS 设置 `PUID=1000`、`PGID=10`。
+浏览器打开 `http://NAS-IP:17321`，设置管理密码、连接 Codex，然后复制手机桥接 Secret。公网使用时，在 NAS 反向代理中把 HTTPS 域名转发到 `http://127.0.0.1:17321`；手机和采集器都填写 HTTPS 根地址，不追加接口路径。
 
-浏览器打开：
+## Windows 采集器
 
-```text
-http://NAS-IP:17321
-```
+从 [Releases](https://github.com/xudong7587/vwatch-quota-hub/releases) 下载 `VWatchCollector.exe`。它是几十 KB 的单文件程序，不捆绑 Node.js、Python 或 Token Monitor。填写与手机相同的 Hub 地址和 Secret 即可。
 
-首次进入时：
+项目文档在本机加密后同步，Hub 看不到明文；冲突会保留副本。Codex 对话目前只做安全备份，不会覆盖或合并 Codex 的运行中数据库。详情见 [`collector-windows/README.md`](collector-windows/README.md)。
 
-1. 设置管理密码。
-2. 在面板复制自动生成的手机桥接 Secret。
-3. 点击“连接账号”完成 Codex 设备码登录。
-4. 把 HTTPS 地址和 Secret 填入手机“额度桥接”App。
-
-首次设置只能从 NAS 本机或局域网直连完成。请先完成设置，再配置公网访问。
-
-## HTTPS
-
-手机桥接请使用受 Android 信任的 HTTPS 地址。在 NAS 反向代理中把域名转发到：
-
-```text
-http://127.0.0.1:17321
-```
-
-手机中填写域名根地址，例如 `https://quota.example.com`，不要追加 `/api/stats`。
-
-## 更新与查看日志
+## 更新
 
 ```bash
 docker compose pull
 docker compose up -d --force-recreate
-docker compose logs -f quota-hub
 ```
 
-配置、Codex 登录状态和自动生成的 Secret 都保存在 `hub-data` 数据卷中，更新或重启容器不会丢失。
-
-旧版若出现 `/data/credentials.json` 的 `EACCES`，执行上面的更新命令即可；新版会在启动时修正数据卷权限，然后降权运行。
+配置、登录状态、用量与同步密文都保存在 `hub-data` 数据卷中。
