@@ -166,6 +166,16 @@ export class UsageStore {
     return this.get();
   }
 
+  async forgetDevice(deviceId) {
+    const id = normalizeDeviceId(deviceId);
+    const removed = Object.prototype.hasOwnProperty.call(this.devices, id);
+    if (removed) {
+      delete this.devices[id];
+      await this.persist();
+    }
+    return { deviceId: id, removed, usage: this.get() };
+  }
+
   async persist() {
     const aggregate = aggregateDevices(this.devices);
     const body = `${JSON.stringify({ ...aggregate, schemaVersion: SCHEMA_VERSION, snapshots: this.devices })}\n`;

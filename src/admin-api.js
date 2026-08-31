@@ -233,6 +233,20 @@ export function createAdminApi(options = {}) {
         return result(200, await syncStore?.getSummary?.() || null);
       }
 
+      const deviceRoute = /^\/admin\/api\/devices\/([a-z0-9][a-z0-9._-]{2,63})$/.exec(pathname);
+      if (deviceRoute) {
+        if (request.method !== "DELETE") {
+          return result(405, { error: "method_not_allowed" }, { Allow: "DELETE" });
+        }
+        if (!usageStore?.forgetDevice && !syncStore?.forgetDevice) {
+          return result(501, { error: "device_store_unavailable", message: "终端存储未启用" });
+        }
+        const deviceId = deviceRoute[1];
+        const usage = await usageStore?.forgetDevice?.(deviceId) || null;
+        const sync = await syncStore?.forgetDevice?.(deviceId) || null;
+        return result(200, { ok: true, deviceId, usage, sync, state: await adminState() });
+      }
+
       if (credentialStore && pathname === "/admin/api/bridge/rotate") {
         if (request.method !== "POST") {
           return result(405, { error: "method_not_allowed" }, { Allow: "POST" });

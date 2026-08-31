@@ -310,6 +310,49 @@ export class SyncStore {
     };
   }
 
+  async forgetDevice(deviceId) {
+    const device = safeId(deviceId, "deviceId");
+    let removedActivities = 0;
+    for (const [key, activity] of this.activities) {
+      if (activity.deviceId !== device) continue;
+      this.activities.delete(key);
+      removedActivities += 1;
+    }
+
+    let directories = [];
+    try {
+      directories = await readdir(this.root, { withFileTypes: true });
+    } catch (error) {
+      if (error?.code === "ENOENT") return { deviceId: device, removedActivities, detachedFiles: 0 };
+      throw error;
+    }
+    let detachedFiles = 0;
+    for (const directory of directories) {
+      if (!directory.isDirectory()) continue;
+      let workspaceId;
+      try { workspaceId = safeId(directory.name, "workspaceId"); } catch { continue; }
+      const previous = this.queues.get(workspaceId) || Promise.resolve();
+      const operation = previous.catch(() => {}).then(async () => {
+        const manifest = await this.readManifest(workspaceId);
+        let changed = false;
+        for (const entry of Object.values(manifest.files || {})) {
+          if (entry?.deviceId !== device) continue;
+          delete entry.deviceId;
+          detachedFiles += 1;
+          changed = true;
+        }
+        if (changed) {
+          const body = Buffer.from(`${JSON.stringify(manifest)}\n`, "utf8");
+          if (body.byteLength > MAX_MANIFEST_BYTES) throw new Error("sync manifest is too large");
+          await atomicWrite(this.manifestPath(workspaceId), body);
+        }
+      });
+      this.queues.set(workspaceId, operation);
+      try { await operation; } finally { if (this.queues.get(workspaceId) === operation) this.queues.delete(workspaceId); }
+    }
+    return { deviceId: device, removedActivities, detachedFiles };
+  }
+
   async push(workspaceId, deviceId, inputFiles) {
     const id = safeId(workspaceId, "workspaceId");
     const device = safeId(deviceId, "deviceId");

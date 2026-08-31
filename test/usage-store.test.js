@@ -51,3 +51,21 @@ test("usage history persists atomically across restarts", async (t) => {
   await second.initialize();
   assert.equal(second.get().periods.month.costUsd, 3.25);
 });
+
+test("forgetting one device removes only its usage snapshot", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "cw-usage-forget-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const store = new UsageStore({ dataDir: directory });
+  await store.initialize();
+  await store.ingest("office-pc", sample());
+  await store.ingest("home-pc", { ...sample(), periods: { ...sample().periods, total: { ...sample().periods.total, totalTokens: 250 } } });
+
+  const result = await store.forgetDevice("office-pc");
+  assert.equal(result.removed, true);
+  assert.equal(store.get().deviceCount, 1);
+  assert.equal(store.get().devices[0].id, "home-pc");
+
+  const restarted = new UsageStore({ dataDir: directory });
+  await restarted.initialize();
+  assert.deepEqual(restarted.get().devices.map((device) => device.id), ["home-pc"]);
+});

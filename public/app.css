@@ -1555,6 +1555,25 @@ input[type="checkbox"] {
   font-weight: 760;
 }
 
+.entity-row > .entity-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 9px;
+}
+
+.entity-actions .button {
+  min-height: 32px;
+  padding: 6px 11px;
+}
+
+.surface-note {
+  margin: 12px 2px 0;
+  color: var(--text-faint);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
 .strategy-steps {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

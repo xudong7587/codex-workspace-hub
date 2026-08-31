@@ -618,7 +618,11 @@
       const status = document.createElement("span");
       const recent = device.lastSeenAt && Date.now() - Date.parse(device.lastSeenAt) < 30 * 60_000;
       status.className = recent ? "entity-status is-online" : "entity-status"; status.textContent = recent ? "最近在线" : "待连接";
-      row.append(mark, copy, status); deviceList.append(row);
+      const actions = document.createElement("div"); actions.className = "entity-actions";
+      const remove = document.createElement("button"); remove.type = "button"; remove.className = "button button-quiet button-small button-danger-text"; remove.textContent = "移除";
+      remove.addEventListener("click", () => forgetDevice(device.id, remove));
+      actions.append(status, remove);
+      row.append(mark, copy, actions); deviceList.append(row);
     }
 
     const workspaces = Array.isArray(sync?.workspaces) ? sync.workspaces : [];
@@ -642,6 +646,28 @@
       }
       const time = document.createElement("span"); time.className = `entity-status ${active ? "is-online" : ""}`; time.textContent = active ? `${active.percent || 0}%` : (workspace.updatedAt ? formatDateTime(workspace.updatedAt) : "等待数据");
       row.append(mark, copy, time); workspaceList.append(row);
+    }
+  }
+
+  async function forgetDevice(deviceId, button) {
+    if (!window.confirm(`确定移除终端“${deviceId}”吗？\n\n这会清理该终端的连接、额度快照和活动记录，但不会删除 NAS 中已经同步的工作区文件。终端再次上报后会自动重新出现。`)) return;
+    setButtonBusy(button, true, "移除中");
+    try {
+      const response = await api(`/admin/api/devices/${encodeURIComponent(deviceId)}`, { method: "DELETE" });
+      if (response.state) {
+        currentState = response.state;
+        renderState(currentState);
+      } else {
+        await loadState();
+      }
+      showToast(`已移除终端 ${deviceId}，工作区文件已保留`);
+    } catch (error) {
+      if (error.isAuthError) {
+        clearToken(); showLogin("管理会话已过期，请重新登录。", "error");
+      } else {
+        showGlobalAlert(error.message, "error");
+        setButtonBusy(button, false);
+      }
     }
   }
 

@@ -14,7 +14,7 @@ namespace CodexWorkspaceCollector {
         public string Path { get; set; }
         public bool Enabled { get; set; }
         public string Direction { get; set; }
-        public SyncFolder() { WorkspaceId = "project"; Name = "项目"; Path = ""; Enabled = true; Direction = "both"; }
+        public SyncFolder() { WorkspaceId = "project"; Name = ""; Path = ""; Enabled = true; Direction = "both"; }
     }
 
     [Serializable]
@@ -80,23 +80,40 @@ namespace CodexWorkspaceCollector {
                 bool legacyFolders = rawConfiguration.IndexOf("\"Enabled\"", StringComparison.OrdinalIgnoreCase) < 0;
                 bool foldersMigrated = rawConfiguration.IndexOf("\"Name\"", StringComparison.OrdinalIgnoreCase) < 0;
                 Dictionary<string, int> originalIds = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                Dictionary<string, int> originalNames = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
                 foreach (SyncFolder folder in value.Folders) if (folder != null) {
                     string originalId = String.IsNullOrWhiteSpace(folder.WorkspaceId) ? "windows-pc" : folder.WorkspaceId;
                     originalIds[originalId] = originalIds.ContainsKey(originalId) ? originalIds[originalId] + 1 : 1;
+                    string originalName = (folder.Name ?? "").Trim();
+                    if (!String.IsNullOrWhiteSpace(originalName)) originalNames[originalName] = originalNames.ContainsKey(originalName) ? originalNames[originalName] + 1 : 1;
                 }
                 HashSet<string> usedIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                HashSet<string> usedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 foreach (SyncFolder folder in value.Folders) {
                     if (folder == null) continue;
                     if (legacyFolders) folder.Enabled = true;
                     if (String.IsNullOrWhiteSpace(folder.Direction)) folder.Direction = "both";
                     if (folder.Direction != "both" && folder.Direction != "upload" && folder.Direction != "download") folder.Direction = "both";
                     string directoryName = Path.GetFileName((folder.Path ?? "").TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
-                    if (String.IsNullOrWhiteSpace(folder.Name)) { folder.Name = String.IsNullOrWhiteSpace(directoryName) ? folder.WorkspaceId : directoryName; foldersMigrated = true; }
+                    string originalName = (folder.Name ?? "").Trim();
+                    bool placeholderName = String.IsNullOrWhiteSpace(originalName)
+                        || ((String.Equals(originalName, "项目", StringComparison.OrdinalIgnoreCase) || String.Equals(originalName, "windows-pc", StringComparison.OrdinalIgnoreCase))
+                            && originalNames.ContainsKey(originalName) && originalNames[originalName] > 1);
+                    string displayName = placeholderName ? (String.IsNullOrWhiteSpace(directoryName) ? folder.WorkspaceId : directoryName) : originalName;
+                    if (String.IsNullOrWhiteSpace(displayName)) displayName = "项目";
+                    string uniqueName = displayName;
+                    int nameSuffix = 2;
+                    while (!usedNames.Add(uniqueName)) uniqueName = displayName + "（" + nameSuffix++ + "）";
+                    bool nameChanged = !String.Equals(folder.Name, uniqueName, StringComparison.Ordinal);
+                    if (nameChanged) { folder.Name = uniqueName; foldersMigrated = true; }
                     string originalId = String.IsNullOrWhiteSpace(folder.WorkspaceId) ? "windows-pc" : folder.WorkspaceId;
-                    string candidate = originalIds.ContainsKey(originalId) && originalIds[originalId] > 1 ? Slug(folder.Name) : Slug(originalId);
+                    string candidate = nameChanged || (originalIds.ContainsKey(originalId) && originalIds[originalId] > 1) ? Slug(folder.Name) : Slug(originalId);
                     if (!usedIds.Add(candidate)) {
                         candidate = candidate + "-" + StableHash((folder.Path ?? "") + "\0" + folder.Name, 4);
-                        usedIds.Add(candidate); foldersMigrated = true;
+                        int idSuffix = 2;
+                        string uniqueId = candidate;
+                        while (!usedIds.Add(uniqueId)) uniqueId = candidate + "-" + idSuffix++;
+                        candidate = uniqueId; foldersMigrated = true;
                     }
                     if (!String.Equals(folder.WorkspaceId, candidate, StringComparison.Ordinal)) { folder.WorkspaceId = candidate; foldersMigrated = true; }
                 }

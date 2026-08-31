@@ -158,7 +158,9 @@ namespace CodexWorkspaceCollector {
             foreach (DataGridViewRow row in projects.Rows) {
                 string name = Convert.ToString(row.Cells["WorkspaceId"].Value).Trim(), path = Convert.ToString(row.Cells["Path"].Value).Trim();
                 if (String.IsNullOrWhiteSpace(name) || String.IsNullOrWhiteSpace(path)) continue;
-                string id = CollectorConfig.Slug(name); if (!ids.Add(id)) throw new InvalidOperationException("项目名称不能重复：" + name);
+                string baseName = name; int suffix = 2; string id = CollectorConfig.Slug(name);
+                while (!ids.Add(id)) { name = baseName + "（" + suffix++ + "）"; id = CollectorConfig.Slug(name); }
+                if (!String.Equals(Convert.ToString(row.Cells["WorkspaceId"].Value), name, StringComparison.Ordinal)) row.Cells["WorkspaceId"].Value = name;
                 values.Add(new SyncFolder { Enabled = Convert.ToBoolean(row.Cells["Enabled"].Value ?? false), WorkspaceId = id, Name = name, Path = path, Direction = DirectionValue(Convert.ToString(row.Cells["Direction"].Value)) });
             }
             return values;

@@ -279,6 +279,25 @@ test("usage history import is authenticated and returned with admin state", asyn
   assert.equal(stored.usdCnyRate, 7.2);
 });
 
+test("admin can forget a terminal without deleting workspace storage", async () => {
+  const calls = [];
+  const usageStore = {
+    get: () => ({ deviceCount: 0, devices: [] }),
+    async forgetDevice(deviceId) { calls.push(["usage", deviceId]); return { removed: true }; },
+  };
+  const syncStore = {
+    getSummary: async () => ({ workspaceCount: 1, devices: [], workspaces: [{ id: "keep-project" }] }),
+    async forgetDevice(deviceId) { calls.push(["sync", deviceId]); return { detachedFiles: 3 }; },
+  };
+  const handle = createAdminApi({ providerManager: createManager(), adminToken: ADMIN_TOKEN, usageStore, syncStore });
+  const response = await handle(request({ method: "DELETE", token: ADMIN_TOKEN }), "/admin/api/devices/old-terminal");
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.payload.ok, true);
+  assert.deepEqual(calls, [["usage", "old-terminal"], ["sync", "old-terminal"]]);
+  assert.equal(response.payload.state.sync.workspaceCount, 1);
+});
+
 test("Codex login route starts device flow and refreshes once after completion", async () => {
   const manager = createManager();
   const handle = createAdminApi({ providerManager: manager, adminToken: ADMIN_TOKEN });

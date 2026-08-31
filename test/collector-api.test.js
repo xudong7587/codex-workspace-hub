@@ -101,6 +101,25 @@ test("collector progress exposes a device before its first workspace commit", as
   });
 });
 
+test("forgetting a sync device preserves workspace files and detaches its records", async () => {
+  await withServer(async (baseUrl, usageStore, syncStore) => {
+    await post(baseUrl, "/api/collector/v1/sync/push", {
+      workspaceId: "keep-project", deviceId: "old-terminal",
+      files: [{ path: "README.md", hash: "d".repeat(64), baseRevision: 0, size: 9, blob: Buffer.from("encrypted").toString("base64") }],
+    });
+    syncStore.reportProgress("old-terminal", { workspaceId: "keep-project", status: "running", percent: 50 });
+
+    const result = await syncStore.forgetDevice("old-terminal");
+    assert.equal(result.detachedFiles, 1);
+    assert.equal(result.removedActivities, 1);
+    const summary = await syncStore.getSummary();
+    assert.equal(summary.workspaceCount, 1);
+    assert.equal(summary.fileCount, 1);
+    assert.deepEqual(summary.devices, []);
+    assert.equal((await syncStore.pull("keep-project", 0)).files.length, 1);
+  });
+});
+
 test("collector protocol v2 transfers blobs in small chunks and publishes progress", async () => {
   await withServer(async (baseUrl, usageStore, syncStore) => {
     const encrypted = Buffer.alloc(900_000);
