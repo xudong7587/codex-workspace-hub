@@ -21,6 +21,7 @@ services:
 
     volumes:
       - hub-data:/data
+      - ./sync-data:/data/sync
 
     read_only: true
     tmpfs:
