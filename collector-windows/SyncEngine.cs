@@ -59,7 +59,7 @@ namespace CodexWorkspaceCollector {
                     if (direction == "download") Directory.CreateDirectory(folder.Path);
                     else { log("跳过不存在的项目目录：" + folder.Path); continue; }
                 }
-                targets.Add(new SyncTarget { WorkspaceId = CollectorConfig.Slug(folder.WorkspaceId), Name = folder.WorkspaceId, Root = folder.Path, Direction = direction, BackupOnly = false });
+                targets.Add(new SyncTarget { WorkspaceId = CollectorConfig.Slug(folder.WorkspaceId), Name = String.IsNullOrWhiteSpace(folder.Name) ? folder.WorkspaceId : folder.Name, Root = folder.Path, Direction = direction, BackupOnly = false });
             }
             if (config.BackupConversations) AddConversationTargets(targets);
             if (targets.Count == 0) {

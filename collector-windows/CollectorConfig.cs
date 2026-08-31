@@ -10,10 +10,11 @@ namespace CodexWorkspaceCollector {
     [Serializable]
     public sealed class SyncFolder {
         public string WorkspaceId { get; set; }
+        public string Name { get; set; }
         public string Path { get; set; }
         public bool Enabled { get; set; }
         public string Direction { get; set; }
-        public SyncFolder() { WorkspaceId = "project"; Path = ""; Enabled = true; Direction = "both"; }
+        public SyncFolder() { WorkspaceId = "project"; Name = "项目"; Path = ""; Enabled = true; Direction = "both"; }
     }
 
     [Serializable]
@@ -77,11 +78,27 @@ namespace CodexWorkspaceCollector {
                 if (value.Folders == null) value.Folders = new List<SyncFolder>();
                 string rawConfiguration = File.ReadAllText(sourcePath, Encoding.UTF8);
                 bool legacyFolders = rawConfiguration.IndexOf("\"Enabled\"", StringComparison.OrdinalIgnoreCase) < 0;
+                bool foldersMigrated = rawConfiguration.IndexOf("\"Name\"", StringComparison.OrdinalIgnoreCase) < 0;
+                Dictionary<string, int> originalIds = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                foreach (SyncFolder folder in value.Folders) if (folder != null) {
+                    string originalId = String.IsNullOrWhiteSpace(folder.WorkspaceId) ? "windows-pc" : folder.WorkspaceId;
+                    originalIds[originalId] = originalIds.ContainsKey(originalId) ? originalIds[originalId] + 1 : 1;
+                }
+                HashSet<string> usedIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 foreach (SyncFolder folder in value.Folders) {
                     if (folder == null) continue;
                     if (legacyFolders) folder.Enabled = true;
                     if (String.IsNullOrWhiteSpace(folder.Direction)) folder.Direction = "both";
                     if (folder.Direction != "both" && folder.Direction != "upload" && folder.Direction != "download") folder.Direction = "both";
+                    string directoryName = Path.GetFileName((folder.Path ?? "").TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+                    if (String.IsNullOrWhiteSpace(folder.Name)) { folder.Name = String.IsNullOrWhiteSpace(directoryName) ? folder.WorkspaceId : directoryName; foldersMigrated = true; }
+                    string originalId = String.IsNullOrWhiteSpace(folder.WorkspaceId) ? "windows-pc" : folder.WorkspaceId;
+                    string candidate = originalIds.ContainsKey(originalId) && originalIds[originalId] > 1 ? Slug(folder.Name) : Slug(originalId);
+                    if (!usedIds.Add(candidate)) {
+                        candidate = candidate + "-" + StableHash((folder.Path ?? "") + "\0" + folder.Name, 4);
+                        usedIds.Add(candidate); foldersMigrated = true;
+                    }
+                    if (!String.Equals(folder.WorkspaceId, candidate, StringComparison.Ordinal)) { folder.WorkspaceId = candidate; foldersMigrated = true; }
                 }
                 if (value.IntervalMinutes < 1) value.IntervalMinutes = 5;
                 if (String.IsNullOrWhiteSpace(value.SyncMode)) value.SyncMode = "smart";
@@ -89,7 +106,7 @@ namespace CodexWorkspaceCollector {
                 if (value.QuietSeconds < 30 || value.QuietSeconds > 900) value.QuietSeconds = 90;
                 if (String.IsNullOrWhiteSpace(value.SyncTimes)) value.SyncTimes = "08:00,12:00,18:00,23:00";
                 if (String.IsNullOrWhiteSpace(value.DeviceId)) value.DeviceId = Slug(Environment.MachineName);
-                if (migratedConfiguration) value.Save();
+                if (migratedConfiguration || foldersMigrated) value.Save();
                 return value;
             } catch { return new CollectorConfig(); }
         }
@@ -109,12 +126,20 @@ namespace CodexWorkspaceCollector {
 
         public static string Slug(string value) {
             StringBuilder output = new StringBuilder();
-            foreach (char c in (value ?? "").ToLowerInvariant()) {
+            string source = (value ?? "").Trim().ToLowerInvariant();
+            foreach (char c in source) {
                 if ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.') output.Append(c);
                 else if (output.Length > 0 && output[output.Length - 1] != '-') output.Append('-');
             }
             string text = output.ToString().Trim('-');
-            return text.Length >= 3 ? text.Substring(0, Math.Min(63, text.Length)) : "windows-pc";
+            return text.Length >= 3 ? text.Substring(0, Math.Min(63, text.Length)) : (source.Length == 0 ? "windows-pc" : "id-" + StableHash(source, 8));
+        }
+
+        private static string StableHash(string value, int bytes) {
+            byte[] hash = SHA256.Create().ComputeHash(Encoding.UTF8.GetBytes(value ?? ""));
+            StringBuilder text = new StringBuilder(bytes * 2);
+            for (int index = 0; index < Math.Min(bytes, hash.Length); index++) text.Append(hash[index].ToString("x2"));
+            return text.ToString();
         }
 
         private static string Protect(string value) {

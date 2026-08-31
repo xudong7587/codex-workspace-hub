@@ -88,7 +88,7 @@ namespace CodexWorkspaceCollector {
             projects.Columns.Add(new DataGridViewTextBoxColumn { Name = "Path", HeaderText = "本机目录", FillWeight = 46 });
             DataGridViewComboBoxColumn direction = new DataGridViewComboBoxColumn { Name = "Direction", HeaderText = "方向", FillWeight = 18, FlatStyle = FlatStyle.Flat };
             direction.Items.AddRange("双向同步", "仅上传", "仅下载"); projects.Columns.Add(direction);
-            foreach (SyncFolder folder in current.Folders ?? new List<SyncFolder>()) if (folder != null) projects.Rows.Add(folder.Enabled, folder.WorkspaceId, folder.Path, DirectionText(folder.Direction));
+            foreach (SyncFolder folder in current.Folders ?? new List<SyncFolder>()) if (folder != null) projects.Rows.Add(folder.Enabled, String.IsNullOrWhiteSpace(folder.Name) ? folder.WorkspaceId : folder.Name, folder.Path, DirectionText(folder.Direction));
             Panel card = Card(); card.Padding = new Padding(1); card.Controls.Add(projects); page.Controls.Add(card, 0, 2);
             FlowLayoutPanel actions = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, Margin = new Padding(0, 12, 0, 0) };
             Button discover = ActionButton("扫描 Codex 项目", true), add = ActionButton("添加文件夹", false), remove = ActionButton("移除所选", false);
@@ -159,7 +159,7 @@ namespace CodexWorkspaceCollector {
                 string name = Convert.ToString(row.Cells["WorkspaceId"].Value).Trim(), path = Convert.ToString(row.Cells["Path"].Value).Trim();
                 if (String.IsNullOrWhiteSpace(name) || String.IsNullOrWhiteSpace(path)) continue;
                 string id = CollectorConfig.Slug(name); if (!ids.Add(id)) throw new InvalidOperationException("项目名称不能重复：" + name);
-                values.Add(new SyncFolder { Enabled = Convert.ToBoolean(row.Cells["Enabled"].Value ?? false), WorkspaceId = id, Path = path, Direction = DirectionValue(Convert.ToString(row.Cells["Direction"].Value)) });
+                values.Add(new SyncFolder { Enabled = Convert.ToBoolean(row.Cells["Enabled"].Value ?? false), WorkspaceId = id, Name = name, Path = path, Direction = DirectionValue(Convert.ToString(row.Cells["Direction"].Value)) });
             }
             return values;
         }
@@ -194,7 +194,8 @@ namespace CodexWorkspaceCollector {
         private bool AddProject(string path, bool select) {
             string full = Path.GetFullPath(path);
             foreach (DataGridViewRow row in projects.Rows) if (String.Equals(Path.GetFullPath(Convert.ToString(row.Cells["Path"].Value)), full, StringComparison.OrdinalIgnoreCase)) return false;
-            int index = projects.Rows.Add(select, CollectorConfig.Slug(Path.GetFileName(full.TrimEnd('\\', '/'))), full, "双向同步"); if (select) projects.Rows[index].Selected = true; return true;
+            string name = Path.GetFileName(full.TrimEnd('\\', '/'));
+            int index = projects.Rows.Add(select, String.IsNullOrWhiteSpace(name) ? "项目" : name, full, "双向同步"); if (select) projects.Rows[index].Selected = true; return true;
         }
         private static string DirectionText(string value) { return value == "upload" ? "仅上传" : value == "download" ? "仅下载" : "双向同步"; }
         private static string DirectionValue(string value) { return value == "仅上传" ? "upload" : value == "仅下载" ? "download" : "both"; }
