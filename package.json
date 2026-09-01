@@ -1,6 +1,6 @@
 {
   "name": "codex-workspace-hub",
-  "version": "0.9.3",
+  "version": "0.9.4",
   "private": true,
   "description": "A lightweight multi-device Codex workspace, conversation backup, and quota hub.",
   "type": "module",

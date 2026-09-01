@@ -11,7 +11,7 @@ namespace CodexWorkspaceCollector {
         private readonly Color Green = Color.FromArgb(13, 132, 89), Ink = Color.FromArgb(18, 45, 35), Muted = Color.FromArgb(89, 111, 102), Canvas = Color.FromArgb(242, 247, 244);
         private readonly TextBox hub = new TextBox(), key = new TextBox(), device = new TextBox(), interval = new TextBox(), rate = new TextBox(), quiet = new TextBox(), syncTimes = new TextBox();
         private readonly ComboBox syncMode = new ComboBox();
-        private readonly CheckBox sync = new CheckBox(), chats = new CheckBox(), startup = new CheckBox();
+        private readonly CheckBox sync = new CheckBox(), chats = new CheckBox(), deletes = new CheckBox(), startup = new CheckBox();
         private readonly DataGridView projects = new DataGridView();
         private readonly Panel content = new Panel();
         private readonly List<Button> navigation = new List<Button>();
@@ -88,7 +88,10 @@ namespace CodexWorkspaceCollector {
             projects.Columns.Add(new DataGridViewTextBoxColumn { Name = "Path", HeaderText = "本机目录", FillWeight = 46 });
             DataGridViewComboBoxColumn direction = new DataGridViewComboBoxColumn { Name = "Direction", HeaderText = "方向", FillWeight = 18, FlatStyle = FlatStyle.Flat };
             direction.Items.AddRange("双向同步", "仅上传", "仅下载"); projects.Columns.Add(direction);
-            foreach (SyncFolder folder in current.Folders ?? new List<SyncFolder>()) if (folder != null) projects.Rows.Add(folder.Enabled, String.IsNullOrWhiteSpace(folder.Name) ? folder.WorkspaceId : folder.Name, folder.Path, DirectionText(folder.Direction));
+            foreach (SyncFolder folder in current.Folders ?? new List<SyncFolder>()) if (folder != null) {
+                int rowIndex = projects.Rows.Add(folder.Enabled, String.IsNullOrWhiteSpace(folder.Name) ? folder.WorkspaceId : folder.Name, folder.Path, DirectionText(folder.Direction));
+                projects.Rows[rowIndex].Tag = folder;
+            }
             Panel card = Card(); card.Padding = new Padding(1); card.Controls.Add(projects); page.Controls.Add(card, 0, 2);
             FlowLayoutPanel actions = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, Margin = new Padding(0, 12, 0, 0) };
             Button discover = ActionButton("扫描 Codex 项目", true), add = ActionButton("添加文件夹", false), remove = ActionButton("移除所选", false);
@@ -101,8 +104,9 @@ namespace CodexWorkspaceCollector {
             TableLayoutPanel page = Page("自动化", "决定这台电脑何时检查差异。文件变化只作为触发信号，真正传输仍按差异进行。", 8);
             sync.Text = "启用项目同步"; sync.Checked = current.SyncProjectDocuments; sync.AutoSize = true;
             chats.Text = "加密备份本机 Codex 对话"; chats.Checked = current.BackupConversations; chats.AutoSize = true;
+            deletes.Text = "将本机删除同步到其他电脑（远端电脑会移入 .codex-sync-recovery，可恢复）"; deletes.Checked = current.PropagateDeletes; deletes.AutoSize = true;
             startup.Text = "登录 Windows 后自动启动"; startup.Checked = current.StartWithWindows; startup.AutoSize = true;
-            FlowLayoutPanel toggles = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, Margin = new Padding(0, 5, 0, 14) }; toggles.Controls.Add(sync); toggles.Controls.Add(chats); toggles.Controls.Add(startup); page.Controls.Add(toggles, 0, 2);
+            FlowLayoutPanel toggles = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, Margin = new Padding(0, 5, 0, 14) }; toggles.Controls.Add(sync); toggles.Controls.Add(chats); toggles.Controls.Add(deletes); toggles.Controls.Add(startup); page.Controls.Add(toggles, 0, 2);
             syncMode.DropDownStyle = ComboBoxStyle.DropDownList; syncMode.FlatStyle = FlatStyle.Flat; syncMode.Items.AddRange(new object[] { "智能同步（变化后 + 定时兜底）", "仅按设定时间同步", "仅手动同步" });
             syncMode.SelectedIndex = current.SyncMode == "scheduled" ? 1 : current.SyncMode == "manual" ? 2 : 0;
             AddControlField(page, 3, "项目同步模式", syncMode, "推荐智能同步：编辑停止后再同步，不会持续占用资源。");
@@ -148,7 +152,7 @@ namespace CodexWorkspaceCollector {
             if (!Int32.TryParse(quiet.Text.Trim(), out quietSeconds) || quietSeconds < 30 || quietSeconds > 900) throw new InvalidOperationException("静默时间应为 30 到 900 秒。");
             if (!Double.TryParse(rate.Text.Trim(), out usd) || usd < 1 || usd > 20) throw new InvalidOperationException("美元兑人民币应为 1 到 20。");
             CollectorConfig value = new CollectorConfig { HubUrl = hub.Text.Trim().TrimEnd('/'), DeviceId = CollectorConfig.Slug(device.Text), IntervalMinutes = minutes, UsdCnyRate = usd,
-                SyncProjectDocuments = sync.Checked, BackupConversations = chats.Checked, SyncMode = syncMode.SelectedIndex == 1 ? "scheduled" : syncMode.SelectedIndex == 2 ? "manual" : "smart",
+                SyncProjectDocuments = sync.Checked, BackupConversations = chats.Checked, PropagateDeletes = deletes.Checked, SyncMode = syncMode.SelectedIndex == 1 ? "scheduled" : syncMode.SelectedIndex == 2 ? "manual" : "smart",
                 QuietSeconds = quietSeconds, SyncTimes = NormalizeTimes(syncTimes.Text), StartWithWindows = startup.Checked, Folders = ReadProjects() };
             value.Key = key.Text; if (!value.IsReady()) throw new InvalidOperationException("请填写正确的 HTTPS Hub 地址和连接 Key。"); return value;
         }
@@ -158,8 +162,11 @@ namespace CodexWorkspaceCollector {
             foreach (DataGridViewRow row in projects.Rows) {
                 string name = Convert.ToString(row.Cells["WorkspaceId"].Value).Trim(), path = Convert.ToString(row.Cells["Path"].Value).Trim();
                 if (String.IsNullOrWhiteSpace(name) || String.IsNullOrWhiteSpace(path)) continue;
-                string baseName = name; int suffix = 2; string id = CollectorConfig.Slug(name);
-                while (!ids.Add(id)) { name = baseName + "（" + suffix++ + "）"; id = CollectorConfig.Slug(name); }
+                SyncFolder original = row.Tag as SyncFolder;
+                string id = original != null && String.Equals(name, original.Name, StringComparison.Ordinal)
+                    ? CollectorConfig.Slug(original.WorkspaceId) : CollectorConfig.Slug(name);
+                string baseName = name; int suffix = 2;
+                while (!ids.Add(id)) { name = baseName + " (" + suffix++ + ")"; id = CollectorConfig.Slug(name); }
                 if (!String.Equals(Convert.ToString(row.Cells["WorkspaceId"].Value), name, StringComparison.Ordinal)) row.Cells["WorkspaceId"].Value = name;
                 values.Add(new SyncFolder { Enabled = Convert.ToBoolean(row.Cells["Enabled"].Value ?? false), WorkspaceId = id, Name = name, Path = path, Direction = DirectionValue(Convert.ToString(row.Cells["Direction"].Value)) });
             }

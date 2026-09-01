@@ -41,6 +41,7 @@ namespace CodexWorkspaceCollector {
         public CollectorContext() {
             uiContext = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
             config = CollectorConfig.Load();
+            Log("采集器启动 v" + CollectorConfig.AppVersion + "：" + Application.ExecutablePath);
             ContextMenuStrip menu = new ContextMenuStrip();
             menu.Items.Add("立即采集额度", null, delegate { QueueUsage(true); });
             menu.Items.Add("立即同步项目", null, delegate { QueueSync(true, "手动"); });
@@ -158,7 +159,7 @@ namespace CodexWorkspaceCollector {
         }
 
         private void QueueSync(bool notify, string reason) {
-            if (!config.IsReady()) return;
+            if (!config.IsReady() || !HasSyncTargets(config)) return;
             if (Interlocked.Exchange(ref syncRunning, 1) != 0) { Interlocked.Exchange(ref syncPending, 1); return; }
             if (notify) uiContext.Post(delegate { ShowProgress(); }, null);
             ThreadPool.QueueUserWorkItem(delegate {
@@ -181,6 +182,14 @@ namespace CodexWorkspaceCollector {
                     if (Interlocked.Exchange(ref syncPending, 0) != 0) QueueSync(false, "合并的待处理变化");
                 }
             });
+        }
+
+        private static bool HasSyncTargets(CollectorConfig value) {
+            if (value == null) return false;
+            if (value.BackupConversations) return true;
+            if (!value.SyncProjectDocuments) return false;
+            foreach (SyncFolder folder in value.Folders ?? new List<SyncFolder>()) if (folder != null && folder.Enabled && !String.IsNullOrWhiteSpace(folder.Path)) return true;
+            return false;
         }
 
         private void ShowProgress() {

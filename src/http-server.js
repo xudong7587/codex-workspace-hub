@@ -111,7 +111,7 @@ export function createGatewayServer(input, maybeOptions = {}) {
     syncStore,
     logger,
   });
-  const handleCollectorApi = options.handleCollectorApi || createCollectorApi({ usageStore, syncStore });
+  const handleCollectorApi = options.handleCollectorApi || createCollectorApi({ usageStore, syncStore, logger });
 
   return createServer((request, response) => {
     void (async () => {

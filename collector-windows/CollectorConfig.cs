@@ -19,6 +19,7 @@ namespace CodexWorkspaceCollector {
 
     [Serializable]
     public sealed class CollectorConfig {
+        public const string AppVersion = "0.9.4";
         public string HubUrl { get; set; }
         public string ProtectedKey { get; set; }
         public string DeviceId { get; set; }
@@ -26,6 +27,7 @@ namespace CodexWorkspaceCollector {
         public double UsdCnyRate { get; set; }
         public bool SyncProjectDocuments { get; set; }
         public bool BackupConversations { get; set; }
+        public bool PropagateDeletes { get; set; }
         public string SyncMode { get; set; }
         public int QuietSeconds { get; set; }
         public string SyncTimes { get; set; }
@@ -39,13 +41,15 @@ namespace CodexWorkspaceCollector {
             IntervalMinutes = 5;
             UsdCnyRate = 7.2;
             SyncProjectDocuments = true;
-            BackupConversations = true;
+            BackupConversations = false;
+            PropagateDeletes = false;
             SyncMode = "smart";
             QuietSeconds = 90;
             SyncTimes = "08:00,12:00,18:00,23:00";
             Folders = new List<SyncFolder>();
         }
 
+        [ScriptIgnore]
         public string Key {
             get { return Unprotect(ProtectedKey); }
             set { ProtectedKey = Protect(value == null ? "" : value.Trim()); }
@@ -91,7 +95,7 @@ namespace CodexWorkspaceCollector {
                 HashSet<string> usedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 foreach (SyncFolder folder in value.Folders) {
                     if (folder == null) continue;
-                    if (legacyFolders) folder.Enabled = true;
+                    if (legacyFolders) folder.Enabled = false;
                     if (String.IsNullOrWhiteSpace(folder.Direction)) folder.Direction = "both";
                     if (folder.Direction != "both" && folder.Direction != "upload" && folder.Direction != "download") folder.Direction = "both";
                     string directoryName = Path.GetFileName((folder.Path ?? "").TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
@@ -103,7 +107,7 @@ namespace CodexWorkspaceCollector {
                     if (String.IsNullOrWhiteSpace(displayName)) displayName = "项目";
                     string uniqueName = displayName;
                     int nameSuffix = 2;
-                    while (!usedNames.Add(uniqueName)) uniqueName = displayName + "（" + nameSuffix++ + "）";
+                    while (!usedNames.Add(uniqueName)) uniqueName = displayName + " (" + nameSuffix++ + ")";
                     bool nameChanged = !String.Equals(folder.Name, uniqueName, StringComparison.Ordinal);
                     if (nameChanged) { folder.Name = uniqueName; foldersMigrated = true; }
                     string originalId = String.IsNullOrWhiteSpace(folder.WorkspaceId) ? "windows-pc" : folder.WorkspaceId;

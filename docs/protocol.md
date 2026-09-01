@@ -151,11 +151,23 @@ Authorization: Bearer <ADMIN_SESSION_TOKEN>
 - `POST /admin/api/refresh`：手动刷新全部已启用且已配置的 provider。
 - `PUT /admin/api/providers/:id`：启停或更新 provider 设置；Secret 留空表示保留原值。
 - `POST /admin/api/providers/:id/refresh`：刷新指定 provider。
+- `GET /admin/api/diagnostics?limit=200`：返回脱敏的内存日志、进程资源和同步存储一致性检查；`limit` 范围 1–1000。
 - `POST /admin/api/providers/codex/login`：开始设备码登录；面板使用 `X-CW-Login-Id` 为本轮流程绑定随机会话 ID。
 - `GET /admin/api/providers/codex/login`：读取设备码登录状态。
 - `DELETE /admin/api/providers/codex/login?id=<session-id>`：仅在 ID 仍匹配时取消未完成的设备码登录并停止临时 app-server；面板关闭登录窗口或页面时会调用它，延迟到达的旧页面请求不会取消新会话。
 
 手动刷新默认有 60 秒冷却，过于频繁返回 429 和 `Retry-After`。刷新周期允许 60–86400 秒；stale 周期不得短于刷新周期，最大 604800 秒。默认分别为 300 秒与 900 秒。
+
+### Windows 工作区同步协议 v3
+
+采集器接口使用设备连接 Key 鉴权，项目内容先在 PC 加密，Hub 只接触密文、文件哈希和相对路径。v3 请求携带 `protocolVersion: 3`、稳定的 `workspaceId`、用户可读 `workspaceName` 与 `deviceId`，Hub 在清单中持久记录设备到同步名称的映射，便于检查跨电脑匹配。
+
+- `POST /api/collector/v1/sync/pull`：按 `sinceRevision` 拉取增量元数据；`full: true` 用于首次同步和仅下载模式的缺失文件修复。
+- `PUT/GET /api/collector/v1/sync/blob`：最多 512 KiB 一块，v3 Hub 在 pull 响应中声明 `maxBlobBytes`（当前 32 MiB）。PUT 返回 `receivedBytes`，客户端必须按服务端偏移继续；GET 支持任意合法 offset，客户端下载断点保存在本机并在完成后校验密文 SHA-256。连接旧 Hub 时客户端回退到约 7 MiB 明文上限。
+- `POST /api/collector/v1/sync/push`：批量提交普通文件或 v3 删除墓碑。`baseRevision` 不匹配时返回冲突，不静默覆盖较新版本。
+- `POST /api/collector/v1/sync/progress`：上报设备、工作区名称、阶段、文件计数、字节数和百分比。
+
+删除传播默认由客户端关闭。明确启用后，缺失的已跟踪文件会提交 `deleted: true` 墓碑；旧协议客户端不会收到墓碑。v3 客户端收到墓碑时把本机文件移动到 `.codex-sync-recovery`，不执行不可恢复删除。墓碑继续引用历史密文对象，自动垃圾回收不属于 v3。
 
 首次设置必须直连 NAS 的 `17321` 端口完成。之后 `/admin/` 和 `/admin/api/*` 推荐只通过 LAN、VPN、SSH 端口转发或代理 IP 白名单访问；需要远程访问时仍必须使用 HTTPS。密码和会话鉴权是应用层边界，不替代网络访问控制。
 

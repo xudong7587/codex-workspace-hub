@@ -636,8 +636,10 @@
       const row = document.createElement("div"); row.className = "entity-row";
       const mark = document.createElement("span"); mark.className = `entity-mark ${workspace.kind === "conversation-backup" ? "is-chat" : ""}`; mark.textContent = workspace.kind === "conversation-backup" ? "聊" : "项";
       const copy = document.createElement("div");
-      const title = document.createElement("strong"); title.textContent = workspace.id;
-      const meta = document.createElement("small"); meta.textContent = `${workspace.fileCount || 0} 个文件 · ${formatBytes(Number(workspace.totalBytes) || 0)} · r${workspace.revision || 0}`;
+      const displayName = Array.isArray(workspace.names) && workspace.names.length ? workspace.names[0] : workspace.id;
+      const title = document.createElement("strong"); title.textContent = displayName;
+      const identity = displayName === workspace.id ? "" : ` · ${workspace.id}`;
+      const meta = document.createElement("small"); meta.textContent = `${workspace.fileCount || 0} 个文件 · ${formatBytes(Number(workspace.totalBytes) || 0)} · r${workspace.revision || 0}${identity}`;
       copy.append(title, meta);
       const active = activities.find((item) => item?.workspaceId === workspace.id && item?.status === "running");
       if (active) {

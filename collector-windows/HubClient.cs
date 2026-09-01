@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Text;
+using System.Threading;
 using System.Web.Script.Serialization;
 
 namespace CodexWorkspaceCollector {
@@ -16,6 +17,10 @@ namespace CodexWorkspaceCollector {
         public HubClient(CollectorConfig config) { this.config = config; }
 
         public Dictionary<string, object> Post(string path, object body) {
+            return Retry(delegate { return PostOnce(path, body); });
+        }
+
+        private Dictionary<string, object> PostOnce(string path, object body) {
             byte[] bytes = Encoding.UTF8.GetBytes(json.Serialize(body));
             HttpWebRequest request = CreateRequest(path, "POST", "application/json; charset=utf-8", "application/json");
             request.ContentLength = bytes.Length;
@@ -23,7 +28,15 @@ namespace CodexWorkspaceCollector {
             return ReadJson(request);
         }
 
-        public Dictionary<string, object> PutBlobChunk(string workspaceId, string objectId, long offset, long totalBytes, byte[] value, int count) {
+        public long PutBlobChunk(string workspaceId, string objectId, long offset, long totalBytes, byte[] value, int count) {
+            Dictionary<string, object> response = Retry(delegate { return PutBlobChunkOnce(workspaceId, objectId, offset, totalBytes, value, count); });
+            object raw; long received;
+            if (!response.TryGetValue("receivedBytes", out raw) || !Int64.TryParse(Convert.ToString(raw), out received)) received = offset + count;
+            if (received < offset || received > totalBytes) throw new InvalidDataException("CW 返回了无效的续传偏移");
+            return received;
+        }
+
+        private Dictionary<string, object> PutBlobChunkOnce(string workspaceId, string objectId, long offset, long totalBytes, byte[] value, int count) {
             string path = "/api/collector/v1/sync/blob?workspaceId=" + Escape(workspaceId)
                 + "&object=" + Escape(objectId) + "&offset=" + offset + "&total=" + totalBytes;
             HttpWebRequest request = CreateRequest(path, "PUT", "application/octet-stream", "application/json");
@@ -33,6 +46,13 @@ namespace CodexWorkspaceCollector {
         }
 
         public byte[] GetBlobChunk(string workspaceId, string objectId, long offset, int limit, out long totalBytes) {
+            long receivedTotal = -1;
+            byte[] value = Retry(delegate { return GetBlobChunkOnce(workspaceId, objectId, offset, limit, out receivedTotal); });
+            totalBytes = receivedTotal;
+            return value;
+        }
+
+        private byte[] GetBlobChunkOnce(string workspaceId, string objectId, long offset, int limit, out long totalBytes) {
             string path = "/api/collector/v1/sync/blob?workspaceId=" + Escape(workspaceId)
                 + "&object=" + Escape(objectId) + "&offset=" + offset + "&limit=" + limit;
             HttpWebRequest request = CreateRequest(path, "GET", null, "application/octet-stream");
@@ -45,6 +65,19 @@ namespace CodexWorkspaceCollector {
                     return output.ToArray();
                 }
             } catch (WebException error) { throw RequestError(error); }
+        }
+
+        private static T Retry<T>(Func<T> operation) {
+            Exception last = null;
+            for (int attempt = 1; attempt <= 3; attempt++) {
+                try { return operation(); }
+                catch (HubRequestException error) {
+                    last = error;
+                    if (!error.Transient || attempt == 3) throw;
+                    Thread.Sleep(attempt == 1 ? 500 : 1500);
+                }
+            }
+            throw last ?? new InvalidOperationException("CW 请求失败");
         }
 
         public void ReportProgress(Dictionary<string, object> progress, bool force) {
@@ -82,15 +115,16 @@ namespace CodexWorkspaceCollector {
 
         private static Exception RequestError(WebException error) {
             HttpWebResponse response = error.Response as HttpWebResponse;
-            if (response == null) return new InvalidOperationException("无法连接 CW，请检查网络、HTTPS 地址与证书。", error);
+            if (response == null) return new HubRequestException("无法连接 CW，请检查网络、HTTPS 地址与证书。", true, error);
             string detail = "";
             try { using (StreamReader reader = new StreamReader(response.GetResponseStream(), Encoding.UTF8)) detail = reader.ReadToEnd(); } catch { }
             int status = (int)response.StatusCode;
             string contentType = response.ContentType ?? "";
-            if (status == 502 || status == 504) return new InvalidOperationException("CW 反向代理返回 HTTP " + status + "。新版会自动分块传输；若仍出现，请检查代理超时和上传限制。");
+            bool transient = status == 408 || status == 429 || status == 500 || status == 502 || status == 503 || status == 504;
+            if (status == 502 || status == 504) return new HubRequestException("CW 反向代理返回 HTTP " + status + "。已自动重试；若仍出现，请检查代理超时和上传限制。", true, error);
             string message = ExtractMessage(detail);
             if (String.IsNullOrWhiteSpace(message) && contentType.IndexOf("html", StringComparison.OrdinalIgnoreCase) >= 0) message = "反向代理返回了网页错误";
-            return new InvalidOperationException("CW 请求失败 HTTP " + status + (String.IsNullOrWhiteSpace(message) ? "" : "：" + message));
+            return new HubRequestException("CW 请求失败 HTTP " + status + (String.IsNullOrWhiteSpace(message) ? "" : "：" + message), transient, error);
         }
 
         private static string ExtractMessage(string body) {
@@ -107,5 +141,10 @@ namespace CodexWorkspaceCollector {
         }
 
         private static string Escape(string value) { return Uri.EscapeDataString(value ?? ""); }
+    }
+
+    internal sealed class HubRequestException : InvalidOperationException {
+        public bool Transient { get; private set; }
+        public HubRequestException(string message, bool transient, Exception inner) : base(message, inner) { Transient = transient; }
     }
 }

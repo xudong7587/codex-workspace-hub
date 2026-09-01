@@ -1,10 +1,11 @@
 import { createHash, randomBytes } from "node:crypto";
+import { createReadStream } from "node:fs";
 import { mkdir, open, readFile, readdir, rename, stat, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 const MAX_MANIFEST_BYTES = 4 * 1024 * 1024;
-const MAX_BLOB_BYTES = 8 * 1024 * 1024;
+const MAX_BLOB_BYTES = 32 * 1024 * 1024;
 const MAX_BLOB_CHUNK_BYTES = 512 * 1024;
 const ACTIVE_PROGRESS_TTL_MS = 24 * 60 * 60_000;
 const STALLED_PROGRESS_MS = 10 * 60_000;
@@ -55,6 +56,12 @@ async function atomicWrite(path, body) {
   }
 }
 
+async function hashFile(path) {
+  const hash = createHash("sha256");
+  for await (const chunk of createReadStream(path)) hash.update(chunk);
+  return hash.digest("hex");
+}
+
 export class SyncStore {
   constructor(options = {}) {
     this.root = options.root || join(options.dataDir || "/data", "sync");
@@ -62,6 +69,7 @@ export class SyncStore {
     this.blobQueues = new Map();
     this.activities = new Map();
     this.now = options.now || (() => Date.now());
+    this.logger = options.logger || null;
   }
 
   workspaceDir(workspaceId) {
@@ -83,19 +91,46 @@ export class SyncStore {
         workspaceId: id,
         revision: Math.max(0, Number(parsed.revision) || 0),
         files: parsed.files && typeof parsed.files === "object" ? parsed.files : {},
+        members: parsed.members && typeof parsed.members === "object" ? parsed.members : {},
       };
     } catch (error) {
       if (error?.code !== "ENOENT") throw error;
-      return { schemaVersion: SCHEMA_VERSION, workspaceId: id, revision: 0, files: {} };
+      return { schemaVersion: SCHEMA_VERSION, workspaceId: id, revision: 0, files: {}, members: {} };
     }
   }
 
+  async writeManifest(manifest) {
+    const body = Buffer.from(`${JSON.stringify({ ...manifest, schemaVersion: SCHEMA_VERSION })}\n`, "utf8");
+    if (body.byteLength > MAX_MANIFEST_BYTES) throw new Error("sync manifest is too large");
+    await atomicWrite(this.manifestPath(manifest.workspaceId), body);
+  }
+
+  async touchWorkspace(workspaceId, deviceId, workspaceName) {
+    if (!deviceId) return;
+    const id = safeId(workspaceId, "workspaceId");
+    const device = safeId(deviceId, "deviceId");
+    const name = boundedText(workspaceName, 128) || id;
+    const previous = this.queues.get(id) || Promise.resolve();
+    const operation = previous.catch(() => {}).then(async () => {
+      const manifest = await this.readManifest(id);
+      manifest.members[device] = { name, lastSeenAt: new Date(this.now()).toISOString() };
+      await this.writeManifest(manifest);
+    });
+    this.queues.set(id, operation);
+    try { await operation; } finally { if (this.queues.get(id) === operation) this.queues.delete(id); }
+  }
+
   async pull(workspaceId, sinceRevision = 0, options = {}) {
+    await this.touchWorkspace(workspaceId, options.deviceId, options.workspaceName);
     const manifest = await this.readManifest(workspaceId);
-    const since = Math.max(0, Number(sinceRevision) || 0);
+    const since = options.full === true ? 0 : Math.max(0, Number(sinceRevision) || 0);
     const files = [];
     for (const entry of Object.values(manifest.files)) {
       if ((entry.revision || 0) <= since) continue;
+      if (entry.deleted === true) {
+        if (options.includeDeleted === true) files.push({ ...entry });
+        continue;
+      }
       if (options.metadataOnly === true) {
         files.push({ ...entry });
         continue;
@@ -103,14 +138,14 @@ export class SyncStore {
       const blob = await readFile(join(this.workspaceDir(manifest.workspaceId), "objects", entry.object));
       files.push({ ...entry, blob: blob.toString("base64") });
     }
-    return { workspaceId: manifest.workspaceId, revision: manifest.revision, files };
+    return { protocolVersion: 3, maxBlobBytes: MAX_BLOB_BYTES, workspaceId: manifest.workspaceId, revision: manifest.revision, files };
   }
 
   async readBlobChunk(workspaceId, objectId, offset = 0, limit = MAX_BLOB_CHUNK_BYTES) {
     const id = safeId(workspaceId, "workspaceId");
     const object = safeHash(objectId, "object");
     const manifest = await this.readManifest(id);
-    if (!Object.values(manifest.files).some((entry) => entry?.object === object)) {
+    if (!Object.values(manifest.files).some((entry) => entry?.deleted !== true && entry?.object === object)) {
       throw new Error("blob is not referenced by this workspace");
     }
     const filePath = join(this.workspaceDir(id), "objects", object);
@@ -145,6 +180,7 @@ export class SyncStore {
       const finalPath = join(this.workspaceDir(id), "objects", object);
       try {
         const existing = await stat(finalPath);
+        if (existing.size !== total) throw new Error("stored blob size does not match upload total");
         return { receivedBytes: existing.size, totalBytes: existing.size, complete: true };
       } catch (error) {
         if (error?.code !== "ENOENT") throw error;
@@ -165,8 +201,7 @@ export class SyncStore {
           await handle.close();
         }
         if (currentSize === total) {
-          const complete = await readFile(partialPath);
-          if (createHash("sha256").update(complete).digest("hex") !== object) {
+          if (await hashFile(partialPath) !== object) {
             await unlink(partialPath).catch(() => {});
             throw new Error("completed blob does not match its object hash");
           }
@@ -187,13 +222,13 @@ export class SyncStore {
       const receivedBytes = currentSize + chunk.byteLength;
       if (receivedBytes < total) return { receivedBytes, totalBytes: total, complete: false };
 
-      const complete = await readFile(partialPath);
-      if (complete.byteLength !== total || createHash("sha256").update(complete).digest("hex") !== object) {
+      if (receivedBytes !== total || await hashFile(partialPath) !== object) {
         await unlink(partialPath).catch(() => {});
         throw new Error("completed blob does not match its object hash");
       }
       await mkdir(dirname(finalPath), { recursive: true, mode: 0o700 });
       await rename(partialPath, finalPath);
+      this.logger?.info?.("Collector blob upload completed", { workspaceId: id, objectId: object, encryptedBytes: receivedBytes });
       return { receivedBytes, totalBytes: total, complete: true };
     });
     this.blobQueues.set(queueKey, operation);
@@ -212,6 +247,8 @@ export class SyncStore {
     const activity = {
       deviceId: device,
       workspaceId,
+      workspaceName: boundedText(input.workspaceName, 128) || workspaceId,
+      direction: new Set(["both", "upload", "download"]).has(input.direction) ? input.direction : "both",
       status,
       phase: boundedText(input.phase, 48) || "同步中",
       percent,
@@ -273,7 +310,9 @@ export class SyncStore {
       if (!directory.isDirectory()) continue;
       let manifest;
       try { manifest = await this.readManifest(directory.name); } catch { continue; }
-      const files = Object.values(manifest.files || {});
+      const entries = Object.values(manifest.files || {});
+      const files = entries.filter((entry) => entry?.deleted !== true);
+      const tombstoneCount = entries.length - files.length;
       let totalBytes = 0;
       let updatedAt = null;
       for (const file of files) {
@@ -286,12 +325,19 @@ export class SyncStore {
       }
       workspaces.push({
         id: manifest.workspaceId,
+        names: [...new Set(Object.values(manifest.members || {}).map((member) => boundedText(member?.name, 128)).filter(Boolean))],
+        members: Object.entries(manifest.members || {}).map(([deviceId, member]) => ({ deviceId, name: boundedText(member?.name, 128) || manifest.workspaceId, lastSeenAt: member?.lastSeenAt || null })),
         kind: manifest.workspaceId.startsWith("codex-chats-") ? "conversation-backup" : "project",
         revision: manifest.revision,
         fileCount: files.length,
+        tombstoneCount,
         totalBytes,
         updatedAt,
       });
+      for (const [deviceId, member] of Object.entries(manifest.members || {})) {
+        const previous = devices.get(deviceId);
+        if (!previous || Date.parse(member?.lastSeenAt || 0) > Date.parse(previous)) devices.set(deviceId, member?.lastSeenAt || null);
+      }
     }
     workspaces.sort((left, right) => Date.parse(right.updatedAt || 0) - Date.parse(left.updatedAt || 0));
     const activities = this.getActivities();
@@ -335,6 +381,10 @@ export class SyncStore {
       const operation = previous.catch(() => {}).then(async () => {
         const manifest = await this.readManifest(workspaceId);
         let changed = false;
+        if (manifest.members?.[device]) {
+          delete manifest.members[device];
+          changed = true;
+        }
         for (const entry of Object.values(manifest.files || {})) {
           if (entry?.deviceId !== device) continue;
           delete entry.deviceId;
@@ -342,9 +392,7 @@ export class SyncStore {
           changed = true;
         }
         if (changed) {
-          const body = Buffer.from(`${JSON.stringify(manifest)}\n`, "utf8");
-          if (body.byteLength > MAX_MANIFEST_BYTES) throw new Error("sync manifest is too large");
-          await atomicWrite(this.manifestPath(workspaceId), body);
+          await this.writeManifest(manifest);
         }
       });
       this.queues.set(workspaceId, operation);
@@ -353,25 +401,56 @@ export class SyncStore {
     return { deviceId: device, removedActivities, detachedFiles };
   }
 
-  async push(workspaceId, deviceId, inputFiles) {
+  async push(workspaceId, deviceId, inputFiles, options = {}) {
     const id = safeId(workspaceId, "workspaceId");
     const device = safeId(deviceId, "deviceId");
     if (!Array.isArray(inputFiles) || inputFiles.length > 64) throw new Error("files must contain at most 64 entries");
     const previous = this.queues.get(id) || Promise.resolve();
     const operation = previous.catch(() => {}).then(async () => {
       const manifest = await this.readManifest(id);
+      manifest.members[device] = {
+        name: boundedText(options.workspaceName, 128) || id,
+        lastSeenAt: new Date(this.now()).toISOString(),
+      };
       const accepted = [];
       const conflicts = [];
       for (const input of inputFiles) {
         const path = safePath(input?.path);
-        const hash = safeHash(input?.hash);
         const baseRevision = Math.max(0, Number(input?.baseRevision) || 0);
         const current = manifest.files[path];
-        if (current && current.hash !== hash && current.revision !== baseRevision) {
+        const deleted = input?.deleted === true && Number(options.protocolVersion) >= 3;
+        if (deleted) {
+          if (current?.deleted === true) {
+            accepted.push(current);
+            continue;
+          }
+          if (current && current.revision !== baseRevision) {
+            conflicts.push({ path, current });
+            continue;
+          }
+          manifest.revision += 1;
+          const entry = {
+            path,
+            hash: current?.hash || null,
+            object: current?.object || null,
+            size: 0,
+            encryptedSize: 0,
+            deleted: true,
+            modifiedAt: new Date(input?.modifiedAt || Date.now()).toISOString(),
+            updatedAt: new Date(this.now()).toISOString(),
+            deviceId: device,
+            revision: manifest.revision,
+          };
+          manifest.files[path] = entry;
+          accepted.push(entry);
+          continue;
+        }
+        const hash = safeHash(input?.hash);
+        if (current && (current.deleted === true || current.hash !== hash) && current.revision !== baseRevision) {
           conflicts.push({ path, current });
           continue;
         }
-        if (current?.hash === hash) {
+        if (current?.deleted !== true && current?.hash === hash) {
           accepted.push(current);
           continue;
         }
@@ -400,14 +479,13 @@ export class SyncStore {
           updatedAt: new Date().toISOString(),
           deviceId: device,
           revision: manifest.revision,
+          deleted: false,
         };
         manifest.files[path] = entry;
         accepted.push(entry);
       }
-      const body = Buffer.from(`${JSON.stringify(manifest)}\n`, "utf8");
-      if (body.byteLength > MAX_MANIFEST_BYTES) throw new Error("sync manifest is too large");
-      await atomicWrite(this.manifestPath(id), body);
-      return { workspaceId: id, revision: manifest.revision, accepted, conflicts };
+      await this.writeManifest(manifest);
+      return { protocolVersion: 3, workspaceId: id, revision: manifest.revision, accepted, conflicts };
     });
     this.queues.set(id, operation);
     try {
@@ -415,6 +493,62 @@ export class SyncStore {
     } finally {
       if (this.queues.get(id) === operation) this.queues.delete(id);
     }
+  }
+
+  async getDiagnostics() {
+    const diagnostics = {
+      root: this.root,
+      workspaceQueueCount: this.queues.size,
+      blobQueueCount: this.blobQueues.size,
+      activityCount: this.getActivities().length,
+      workspaceCount: 0,
+      manifestErrors: [],
+      missingBlobs: [],
+      orphanBlobCount: 0,
+      partialUploads: [],
+    };
+    let directories = [];
+    try { directories = await readdir(this.root, { withFileTypes: true }); }
+    catch (error) {
+      if (error?.code === "ENOENT") return diagnostics;
+      throw error;
+    }
+    for (const directory of directories) {
+      if (!directory.isDirectory()) continue;
+      let id;
+      try { id = safeId(directory.name, "workspaceId"); } catch { continue; }
+      diagnostics.workspaceCount += 1;
+      let manifest;
+      try { manifest = await this.readManifest(id); }
+      catch (error) {
+        diagnostics.manifestErrors.push({ workspaceId: id, errorType: error?.name || "Error" });
+        continue;
+      }
+      const referenced = new Set();
+      for (const entry of Object.values(manifest.files || {})) {
+        if (entry?.object) referenced.add(entry.object);
+        if (entry?.deleted === true || !entry?.object) continue;
+        try { await stat(join(this.workspaceDir(id), "objects", entry.object)); }
+        catch (error) {
+          if (error?.code === "ENOENT") diagnostics.missingBlobs.push({ workspaceId: id, path: entry.path, object: entry.object });
+          else throw error;
+        }
+      }
+      let objects = [];
+      try { objects = await readdir(join(this.workspaceDir(id), "objects"), { withFileTypes: true }); }
+      catch (error) { if (error?.code !== "ENOENT") throw error; }
+      diagnostics.orphanBlobCount += objects.filter((item) => item.isFile() && !referenced.has(item.name)).length;
+      let partials = [];
+      try { partials = await readdir(join(this.workspaceDir(id), ".uploads"), { withFileTypes: true }); }
+      catch (error) { if (error?.code !== "ENOENT") throw error; }
+      for (const partial of partials) {
+        if (!partial.isFile() || !partial.name.endsWith(".part")) continue;
+        const metadata = await stat(join(this.workspaceDir(id), ".uploads", partial.name));
+        diagnostics.partialUploads.push({ workspaceId: id, object: partial.name.slice(0, -5), receivedBytes: metadata.size, updatedAt: metadata.mtime.toISOString() });
+      }
+    }
+    diagnostics.ok = diagnostics.manifestErrors.length === 0 && diagnostics.missingBlobs.length === 0;
+    return diagnostics;
   }
 }
 

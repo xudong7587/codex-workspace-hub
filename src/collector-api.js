@@ -79,7 +79,9 @@ function result(statusCode, payload, headers = {}) {
 export function createCollectorApi(options = {}) {
   const usageStore = options.usageStore;
   const syncStore = options.syncStore;
+  const logger = options.logger || null;
   return async function handleCollectorApi(request, pathname) {
+    const startedAt = Date.now();
     if (!pathname.startsWith("/api/collector/v1/")) return null;
     try {
       const url = new URL(request.url || pathname, "http://hub.invalid");
@@ -113,9 +115,15 @@ export function createCollectorApi(options = {}) {
         }
         if (!syncStore?.pull) return result(501, { error: "sync_store_unavailable" });
         const body = await readJsonBody(request, MAX_USAGE_BODY_BYTES);
-        return result(200, await syncStore.pull(body.workspaceId, body.sinceRevision, {
+        const payload = await syncStore.pull(body.workspaceId, body.sinceRevision, {
           metadataOnly: body.metadataOnly === true,
-        }));
+          includeDeleted: Number(body.protocolVersion) >= 3,
+          full: body.full === true,
+          deviceId: body.deviceId,
+          workspaceName: body.workspaceName,
+        });
+        logger?.info?.("Collector sync pull", { workspaceId: payload.workspaceId, deviceId: body.deviceId, revision: payload.revision, fileCount: payload.files.length, durationMs: Date.now() - startedAt });
+        return result(200, payload);
       }
 
       if (pathname === "/api/collector/v1/sync/push") {
@@ -124,7 +132,9 @@ export function createCollectorApi(options = {}) {
         }
         if (!syncStore?.push) return result(501, { error: "sync_store_unavailable" });
         const body = await readJsonBody(request, MAX_SYNC_BODY_BYTES);
-        return result(200, await syncStore.push(body.workspaceId, body.deviceId, body.files));
+        const payload = await syncStore.push(body.workspaceId, body.deviceId, body.files, { workspaceName: body.workspaceName, protocolVersion: body.protocolVersion });
+        logger?.info?.("Collector sync push", { workspaceId: payload.workspaceId, deviceId: body.deviceId, revision: payload.revision, acceptedCount: payload.accepted.length, conflictCount: payload.conflicts.length, durationMs: Date.now() - startedAt });
+        return result(200, payload);
       }
 
       if (pathname === "/api/collector/v1/sync/blob") {
@@ -170,6 +180,7 @@ export function createCollectorApi(options = {}) {
       if (error instanceof CollectorApiError) {
         return result(error.statusCode, { error: error.code, message: error.message });
       }
+      logger?.warn?.("Collector API request failed", { method: request.method, pathname, errorType: error?.name || "Error", errorMessage: error?.message || "invalid request", durationMs: Date.now() - startedAt });
       return result(400, { error: "invalid_request", message: error?.message || "invalid request" });
     }
   };

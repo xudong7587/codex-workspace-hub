@@ -113,7 +113,7 @@ export function createRuntime(config, options = {}) {
     defaults: defaultRuntimeSettings(config),
   });
   const usageStore = options.usageStore || new UsageStore({ dataDir: config.dataDir });
-  const syncStore = options.syncStore || new SyncStore({ dataDir: config.dataDir });
+  const syncStore = options.syncStore || new SyncStore({ dataDir: config.dataDir, logger });
   const codexProvider = options.codexProvider || createCodexProvider({
     clientFactory,
     timeoutMs: config.loginTimeoutMs,

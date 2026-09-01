@@ -79,7 +79,7 @@ test("collector sync stores opaque blobs, reports workspaces, and rejects stale 
     assert.equal(summary.workspaceCount, 1);
     assert.equal(summary.fileCount, 1);
     assert.equal(summary.totalBytes, 3);
-    assert.deepEqual(summary.devices.map((device) => device.id), ["office-pc"]);
+    assert.deepEqual(summary.devices.map((device) => device.id), ["office-pc", "home-pc"]);
   });
 });
 
@@ -166,5 +166,53 @@ test("collector protocol v2 transfers blobs in small chunks and publishes progre
     const summary = await syncStore.getSummary();
     assert.equal(summary.activities[0].percent, 63);
     assert.equal(summary.activities[0].deviceId, "office-pc");
+  });
+});
+
+test("collector protocol v3 records project mappings and keeps deletions as tombstones", async () => {
+  await withServer(async (baseUrl, usageStore, syncStore) => {
+    const hash = "e".repeat(64);
+    const created = await post(baseUrl, "/api/collector/v1/sync/push", {
+      protocolVersion: 3, workspaceId: "shared-notes", workspaceName: "Shared Notes", deviceId: "office-pc",
+      files: [{ path: "notes/today.md", hash, baseRevision: 0, size: 5, blob: Buffer.from("opaque").toString("base64") }],
+    });
+    const createdBody = await created.json();
+    assert.equal(createdBody.accepted[0].deleted, false);
+
+    const removed = await post(baseUrl, "/api/collector/v1/sync/push", {
+      protocolVersion: 3, workspaceId: "shared-notes", workspaceName: "Shared Notes", deviceId: "office-pc",
+      files: [{ path: "notes/today.md", baseRevision: createdBody.accepted[0].revision, deleted: true }],
+    });
+    const removedBody = await removed.json();
+    assert.equal(removedBody.accepted[0].deleted, true);
+
+    const legacyPull = await post(baseUrl, "/api/collector/v1/sync/pull", { workspaceId: "shared-notes", sinceRevision: 0, metadataOnly: true });
+    assert.deepEqual((await legacyPull.json()).files, []);
+    const v3Pull = await post(baseUrl, "/api/collector/v1/sync/pull", {
+      protocolVersion: 3, workspaceId: "shared-notes", workspaceName: "Shared Notes", deviceId: "home-pc", sinceRevision: 0, metadataOnly: true,
+    });
+    assert.equal((await v3Pull.json()).files[0].deleted, true);
+
+    const summary = await syncStore.getSummary();
+    assert.equal(summary.fileCount, 0);
+    assert.equal(summary.workspaces[0].tombstoneCount, 1);
+    assert.deepEqual(summary.workspaces[0].names, ["Shared Notes"]);
+    assert.equal((await syncStore.getDiagnostics()).ok, true);
+  });
+});
+
+test("blob upload resumes from the server-reported partial offset", async () => {
+  await withServer(async (baseUrl) => {
+    const encrypted = Buffer.alloc(700_000, 7);
+    const object = createHash("sha256").update(encrypted).digest("hex");
+    const first = encrypted.subarray(0, 400_000);
+    const put = (offset, body) => fetch(`${baseUrl}/api/collector/v1/sync/blob?workspaceId=resume-test&object=${object}&offset=${offset}&total=${encrypted.length}`, {
+      method: "PUT", headers: { Authorization: `Bearer ${SECRET}`, "Content-Type": "application/octet-stream" }, body,
+    });
+    assert.equal((await put(0, first)).status, 200);
+    const retryBody = await (await put(0, first)).json();
+    assert.equal(retryBody.receivedBytes, first.length);
+    const completed = await put(retryBody.receivedBytes, encrypted.subarray(retryBody.receivedBytes));
+    assert.equal((await completed.json()).complete, true);
   });
 });

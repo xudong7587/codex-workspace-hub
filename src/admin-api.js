@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 
 import { authenticateAdminRequest } from "./auth.js";
+import { APP_VERSION } from "./version.js";
 
 const MAX_BODY_BYTES = 32 * 1_024;
 const ADMIN_SESSION_TTL_MS = 12 * 60 * 60_000;
@@ -231,6 +232,21 @@ export function createAdminApi(options = {}) {
           return result(405, { error: "method_not_allowed" }, { Allow: "GET, HEAD" });
         }
         return result(200, await syncStore?.getSummary?.() || null);
+      }
+
+      if (pathname === "/admin/api/diagnostics") {
+        if (request.method !== "GET" && request.method !== "HEAD") {
+          return result(405, { error: "method_not_allowed" }, { Allow: "GET, HEAD" });
+        }
+        const url = new URL(request.url || pathname, "http://hub.invalid");
+        const limit = Math.max(1, Math.min(1_000, Number(url.searchParams.get("limit")) || 200));
+        return result(200, {
+          generatedAt: new Date().toISOString(),
+          version: APP_VERSION,
+          process: { uptimeSeconds: Math.round(process.uptime()), memory: process.memoryUsage() },
+          sync: await syncStore?.getDiagnostics?.() || null,
+          logs: logger?.recent?.(limit) || [],
+        });
       }
 
       const deviceRoute = /^\/admin\/api\/devices\/([a-z0-9][a-z0-9._-]{2,63})$/.exec(pathname);

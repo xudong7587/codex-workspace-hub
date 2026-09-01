@@ -298,6 +298,18 @@ test("admin can forget a terminal without deleting workspace storage", async () 
   assert.equal(response.payload.state.sync.workspaceCount, 1);
 });
 
+test("admin diagnostics returns bounded logs and sync integrity without exposing credentials", async () => {
+  const logger = { recent: (limit) => [{ level: "info", message: "sync", limit }] };
+  const syncStore = { getDiagnostics: async () => ({ ok: true, missingBlobs: [] }) };
+  const handle = createAdminApi({ providerManager: createManager(), adminToken: ADMIN_TOKEN, logger, syncStore });
+  const response = await handle(request({ token: ADMIN_TOKEN, url: "/admin/api/diagnostics?limit=12" }), "/admin/api/diagnostics");
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.payload.sync.ok, true);
+  assert.equal(response.payload.logs[0].limit, 12);
+  assert.equal(typeof response.payload.version, "string");
+  assert.equal(response.payload.process.memory.rss > 0, true);
+});
+
 test("Codex login route starts device flow and refreshes once after completion", async () => {
   const manager = createManager();
   const handle = createAdminApi({ providerManager: manager, adminToken: ADMIN_TOKEN });
