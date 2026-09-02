@@ -1,9 +1,10 @@
 .env
 .codex-home/
 .hub-data/
-codex-projects/
+cw-snapshots/
 data/
 node_modules/
 coverage/
 release-assets/
+plugin/cw-development-sync/assets/archive/
 *.log

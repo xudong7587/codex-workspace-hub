@@ -7,15 +7,18 @@
   const LEGACY_THEME_STORAGE_KEY = "vwatch-quota-hub.theme";
   const STATIC_PROVIDER_IDS = ["codex", "openrouter"];
   const THEME_ORDER = ["system", "light", "dark"];
-  const PAGE_NAMES = new Set(["overview", "devices", "codex", "quota", "watch"]);
+  const PAGE_NAMES = new Set(["overview", "sync", "quota"]);
   const PAGE_ALIASES = {
-    workspaces: "devices",
-    "sync-strategy": "devices",
-    providers: "codex",
-    "provider-codex": "codex",
-    "provider-openrouter": "codex",
+    devices: "sync",
+    workspaces: "sync",
+    "sync-strategy": "sync",
+    codex: "quota",
+    providers: "quota",
+    "provider-codex": "quota",
+    "provider-openrouter": "quota",
     settings: "quota",
-    bridge: "watch"
+    watch: "quota",
+    bridge: "quota"
   };
 
   let currentState = null;
@@ -316,6 +319,7 @@
 
   function renderPage({ scrollToTop = false } = {}) {
     const page = resolvePage();
+    document.documentElement.dataset.adminPage = page;
     document.querySelectorAll("[data-page]").forEach((section) => {
       const active = section.dataset.page === page;
       section.hidden = !active;
@@ -327,6 +331,8 @@
       if (active) link.setAttribute("aria-current", "page");
       else link.removeAttribute("aria-current");
     });
+    const quotaDock = byId("coreQuotaDock");
+    if (quotaDock) quotaDock.hidden = page !== "quota";
     if (scrollToTop) window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -403,12 +409,11 @@
       : "未提供";
 
     const devices = mergeCollectorDevices(state.usage, sync);
-    byId("enabledProviderCount").textContent = devices.length ? `${devices.length} 台设备` : "等待采集器";
+    byId("enabledProviderCount").textContent = devices.length ? `${devices.length} 台设备` : "等待插件连接";
     byId("latestUpdateTime").textContent = findLatestSyncActivity(state.usage, sync) || "尚无同步";
     byId("syncProjectCount").textContent = `${toFiniteNumber(sync.workspaceCount, 0)} 个`;
-    byId("syncFileCount").textContent = `${toFiniteNumber(sync.fileCount, 0)} 个`;
+    byId("syncFileCount").textContent = `${toFiniteNumber(sync.snapshotCount, 0)} 个`;
     byId("syncStorage").textContent = formatBytes(toFiniteNumber(sync.totalBytes, 0));
-    byId("syncConversationCount").textContent = `${toFiniteNumber(sync.conversationBackupCount, 0)} 个`;
 
     const hubStatus = getHubStatus(state, providers);
     setBadge(byId("hubStatusBadge"), hubStatus);
@@ -427,22 +432,16 @@
     const codexConnected = Boolean(codex?.enabled && codex?.configured && !providerNeedsConnection(codex));
     const pcConnected = devices.length > 0;
     const watchReady = codexConnected && bridge?.secretConfigured !== false;
-    const completeCount = 1 + Number(pcConnected) + Number(codexConnected);
-
-    setBadge(byId("journeyHubStatus"), { text: "已完成", badgeClass: "badge-success", topState: "ok" });
     setBadge(byId("journeyPcStatus"), pcConnected
       ? { text: `${devices.length} 台已连接`, badgeClass: "badge-success", topState: "ok" }
       : { text: "尚未连接", badgeClass: "badge-neutral", topState: "" });
     setBadge(byId("journeyCodexStatus"), codexConnected
       ? { text: "已授权", badgeClass: "badge-success", topState: "ok" }
       : { text: "等待授权", badgeClass: "badge-warning", topState: "busy" });
-    setBadge(byId("journeyWatchStatus"), watchReady
-      ? { text: "可以接入", badgeClass: "badge-success", topState: "ok" }
-      : { text: "完成 02B 后配置", badgeClass: "badge-neutral", topState: "" });
+    byId("watchBridgeOverview").textContent = watchReady ? "可用" : "等待授权";
     setBadge(byId("cwCodexAuthStatus"), codexConnected
       ? { text: "CW 已授权", badgeClass: "badge-success", topState: "ok" }
       : { text: "需要独立授权", badgeClass: "badge-warning", topState: "busy" });
-    byId("journeyProgress").textContent = `${completeCount}/3 项就绪`;
   }
 
   function isProvider(value) {
@@ -469,12 +468,12 @@
       provider.enabled && provider.configured && !providerNeedsConnection(provider)
     ));
     list.replaceChildren();
-    dock.hidden = false;
+    dock.hidden = resolvePage() !== "quota";
     if (connected.length === 0) {
       byId("coreQuotaSummary").textContent = "核心数据固定显示在这里";
       const emptyCard = document.createElement("a");
       emptyCard.className = "core-quota-card is-warning";
-      emptyCard.href = "#codex";
+      emptyCard.href = "#quota";
       const heading = document.createElement("div");
       heading.className = "core-quota-card-heading";
       const identity = document.createElement("div");
@@ -503,7 +502,7 @@
     for (const provider of connected) {
       const card = document.createElement("a");
       card.className = "core-quota-card";
-      card.href = "#codex";
+      card.href = "#quota";
       const descriptor = statusDescriptor(provider.status, provider.configured);
       if (provider.error || isErrorStatus(provider.status)) {
         card.classList.add("is-error");
@@ -556,33 +555,43 @@
   function renderUsageHistory(usage) {
     const available = usage && typeof usage === "object" && usage.periods;
     const rate = available ? Number(usage.usdCnyRate) : 7.2;
-    const rows = [
-      ["day", "usageDayTokens", "usageDayValue"],
-      ["week", "usageWeekTokens", "usageWeekValue"],
-      ["total", "usageTotalTokens", "usageTotalValue"]
-    ];
-    for (const [period, tokenId, valueId] of rows) {
-      const data = available ? usage.periods[period] : null;
-      byId(tokenId).textContent = data ? `${formatTokenCount(data.totalTokens)} tokens` : "—";
-      byId(valueId).textContent = data
-        ? `API 等价价值 ${formatCny(Number(data.costUsd) * rate)}`
-        : "API 等价价值 —";
-    }
+    const day = available ? usage.periods.day : null;
+    const week = available ? usage.periods.week : null;
+    const total = available ? usage.periods.total : null;
+    byId("usageDayTokens").textContent = day ? `${formatTokenCount(day.totalTokens)} tokens` : "—";
+    byId("usageWeekTokens").textContent = week ? `${formatTokenCount(week.totalTokens)} tokens` : "—";
+    byId("usageTotalTokens").textContent = total ? `${formatTokenCount(total.totalTokens)} tokens` : "—";
+    byId("usageDayValue").textContent = usageValue(day, rate, "—");
+    byId("usageWeekValue").textContent = usageValue(week, rate, "—");
+    byId("usageTotalValue").textContent = usageValue(total, rate, "未采集到详细数据");
     byId("usageHistorySource").textContent = available
       ? `${usage.deviceCount || 1} 台采集器 · ${formatDateTime(usage.capturedAt)}`
-      : "等待 Windows 采集器";
+      : "等待 PC Token 详情采集器";
+    byId("usageHistoryNote").textContent = available
+      ? "金额按各模型输入、缓存和输出 token 的 API 单价折算，并非订阅账单；没有可识别价格时按每百万 token 4 美元粗估。"
+      : "未采集到详细数据。如需精确估值，请安装 PC Token 详情采集器；CW 的剩余额度刷新不受影响。";
+  }
+
+  function usageValue(period, rate, emptyText) {
+    if (!period) return emptyText;
+    if (Number(period.costUsd) > 0) return `API 等价价值 ${formatCny(Number(period.costUsd) * rate)}`;
+    if (Number(period.totalTokens) > 0) {
+      const estimatedUsd = Number(period.totalTokens) / 1_000_000 * 4;
+      return `粗略估算 ${formatCny(estimatedUsd * rate)}（$4 / 百万 token）`;
+    }
+    return emptyText;
   }
 
   function mergeCollectorDevices(usage, sync) {
     const values = new Map();
     for (const item of Array.isArray(sync?.devices) ? sync.devices : []) {
       if (!item?.id) continue;
-      values.set(item.id, { id: item.id, lastSeenAt: item.lastSeenAt || null, sources: ["项目同步"] });
+      values.set(item.id, { id: item.id, lastSeenAt: item.lastSeenAt || null, sources: ["Codex 插件"] });
     }
     for (const item of Array.isArray(usage?.devices) ? usage.devices : []) {
       if (!item?.id) continue;
       const current = values.get(item.id) || { id: item.id, lastSeenAt: null, sources: [] };
-      if (!current.sources.includes("额度采集")) current.sources.push("额度采集");
+      if (!current.sources.includes("Token 详情")) current.sources.push("Token 详情");
       if (!current.lastSeenAt || Date.parse(item.capturedAt || 0) > Date.parse(current.lastSeenAt || 0)) current.lastSeenAt = item.capturedAt || current.lastSeenAt;
       current.totalTokens = item.totalTokens;
       values.set(item.id, current);
@@ -592,7 +601,6 @@
 
   function findLatestSyncActivity(usage, sync) {
     const values = [usage?.capturedAt];
-    for (const activity of Array.isArray(sync?.activities) ? sync.activities : []) values.push(activity?.updatedAt);
     for (const workspace of Array.isArray(sync?.workspaces) ? sync.workspaces : []) values.push(workspace?.updatedAt);
     for (const device of Array.isArray(sync?.devices) ? sync.devices : []) values.push(device?.lastSeenAt);
     const timestamps = values.map((value) => Date.parse(value || "")).filter(Number.isFinite);
@@ -600,13 +608,12 @@
   }
 
   function renderSyncConsole(usage, sync) {
-    renderSyncActivities(sync);
     const devices = mergeCollectorDevices(usage, sync);
     const deviceList = byId("deviceList");
     deviceList.replaceChildren();
     byId("deviceCountBadge").textContent = `${devices.length} 台`;
     if (!devices.length) {
-      const empty = document.createElement("p"); empty.className = "empty-metric"; empty.textContent = "等待 Windows 采集器连接"; deviceList.append(empty);
+      const empty = document.createElement("p"); empty.className = "empty-metric"; empty.textContent = "等待 Codex 插件发布第一个开发快照"; deviceList.append(empty);
     }
     for (const device of devices) {
       const row = document.createElement("div"); row.className = "entity-row";
@@ -626,27 +633,21 @@
     }
 
     const workspaces = Array.isArray(sync?.workspaces) ? sync.workspaces : [];
-    const activities = Array.isArray(sync?.activities) ? sync.activities : [];
     const workspaceList = byId("workspaceList"); workspaceList.replaceChildren();
     byId("workspaceCountBadge").textContent = `${toFiniteNumber(sync?.workspaceCount, 0)} 个项目`;
     if (!workspaces.length) {
-      const empty = document.createElement("p"); empty.className = "empty-metric"; empty.textContent = "还没有项目或对话备份"; workspaceList.append(empty);
+      const empty = document.createElement("p"); empty.className = "empty-metric"; empty.textContent = "还没有开发快照"; workspaceList.append(empty);
     }
     for (const workspace of workspaces.slice(0, 12)) {
       const row = document.createElement("div"); row.className = "entity-row";
-      const mark = document.createElement("span"); mark.className = `entity-mark ${workspace.kind === "conversation-backup" ? "is-chat" : ""}`; mark.textContent = workspace.kind === "conversation-backup" ? "聊" : "项";
+      const mark = document.createElement("span"); mark.className = "entity-mark"; mark.textContent = "项";
       const copy = document.createElement("div");
-      const displayName = Array.isArray(workspace.names) && workspace.names.length ? workspace.names[0] : workspace.id;
+      const displayName = workspace.name || workspace.id;
       const title = document.createElement("strong"); title.textContent = displayName;
       const identity = displayName === workspace.id ? "" : ` · ${workspace.id}`;
-      const meta = document.createElement("small"); meta.textContent = `${workspace.fileCount || 0} 个文件 · ${formatBytes(Number(workspace.totalBytes) || 0)} · r${workspace.revision || 0}${identity}`;
+      const meta = document.createElement("small"); meta.textContent = `${workspace.snapshotCount || 0} 个快照 · ${formatBytes(Number(workspace.totalBytes) || 0)}${identity}`;
       copy.append(title, meta);
-      const active = activities.find((item) => item?.workspaceId === workspace.id && item?.status === "running");
-      if (active) {
-        const track = document.createElement("span"); track.className = "entity-inline-progress";
-        const fill = document.createElement("i"); fill.style.width = `${Math.max(0, Math.min(100, Number(active.percent) || 0))}%`; track.append(fill); copy.append(track);
-      }
-      const time = document.createElement("span"); time.className = `entity-status ${active ? "is-online" : ""}`; time.textContent = active ? `${active.percent || 0}%` : (workspace.updatedAt ? formatDateTime(workspace.updatedAt) : "等待数据");
+      const time = document.createElement("span"); time.className = "entity-status"; time.textContent = workspace.updatedAt ? formatDateTime(workspace.updatedAt) : "等待数据";
       row.append(mark, copy, time); workspaceList.append(row);
     }
   }
@@ -673,48 +674,15 @@
     }
   }
 
-  function renderSyncActivities(sync) {
-    const activities = Array.isArray(sync?.activities) ? sync.activities : [];
-    const list = byId("syncActivityList");
-    if (!list) return;
-    list.replaceChildren();
-    const running = activities.filter((item) => item?.status === "running");
-    const errors = activities.filter((item) => item?.status === "error");
-    const badge = byId("syncActivityBadge");
-    if (running.length) setBadge(badge, { text: `${running.length} 项传输中`, badgeClass: "badge-success", topState: "ok" });
-    else if (errors.length) setBadge(badge, { text: `${errors.length} 项异常`, badgeClass: "badge-danger", topState: "error" });
-    else setBadge(badge, { text: activities.length ? "最近已完成" : "等待任务", badgeClass: "badge-neutral", topState: "" });
-    if (!activities.length) {
-      const empty = document.createElement("p"); empty.className = "empty-metric";
-      empty.textContent = "采集器开始同步后，这里会实时显示每台电脑和工作区的进度。"; list.append(empty); return;
-    }
-    for (const activity of activities.slice(0, 10)) {
-      const row = document.createElement("article"); row.className = `sync-progress-row is-${activity.status || "running"}`;
-      const heading = document.createElement("div"); heading.className = "sync-progress-heading";
-      const identity = document.createElement("div");
-      const title = document.createElement("strong"); title.textContent = `${activity.deviceId || "设备"} · ${activity.workspaceId || "工作区"}`;
-      const phase = document.createElement("small"); phase.textContent = activity.phase || "同步中"; identity.append(title, phase);
-      const value = document.createElement("b"); value.textContent = `${Math.max(0, Math.min(100, Number(activity.percent) || 0))}%`;
-      heading.append(identity, value);
-      const track = document.createElement("div"); track.className = "sync-progress-track";
-      const fill = document.createElement("span"); fill.style.width = `${Math.max(0, Math.min(100, Number(activity.percent) || 0))}%`; track.append(fill);
-      const meta = document.createElement("div"); meta.className = "sync-progress-meta";
-      const message = document.createElement("span"); message.textContent = activity.currentFile || activity.message || "等待下一阶段";
-      const counts = document.createElement("span");
-      counts.textContent = activity.totalFiles > 0 ? `${activity.completedFiles || 0}/${activity.totalFiles} 个文件` : (activity.updatedAt ? formatDateTime(activity.updatedAt) : "");
-      meta.append(message, counts); row.append(heading, track, meta); list.append(row);
-    }
-  }
-
   async function pollSyncProgress() {
-    if (syncPolling || !currentState || resolvePage() !== "devices") return;
+    if (syncPolling || !currentState || resolvePage() !== "sync") return;
     syncPolling = true;
     try {
       const sync = await api("/admin/api/sync");
       currentState.sync = sync && typeof sync === "object" ? sync : {};
       renderSyncConsole(currentState.usage, currentState.sync);
       byId("syncProjectCount").textContent = `${toFiniteNumber(currentState.sync.workspaceCount, 0)} 个`;
-      byId("syncFileCount").textContent = `${toFiniteNumber(currentState.sync.fileCount, 0)} 个`;
+      byId("syncFileCount").textContent = `${toFiniteNumber(currentState.sync.snapshotCount, 0)} 个`;
       byId("syncStorage").textContent = formatBytes(toFiniteNumber(currentState.sync.totalBytes, 0));
     } catch (error) {
       if (error.isAuthError) { clearToken(); showLogin("管理会话已过期，请重新登录。", "error"); }
@@ -1323,14 +1291,14 @@
   }
 
   async function rotateBridgeSecret() {
-    if (!window.confirm("重新生成后，PC 采集器和手机里的旧连接 Key 都会立即失效。继续吗？")) return;
+    if (!window.confirm("重新生成后，Codex 插件和手机里的旧连接 Key 都会立即失效。继续吗？")) return;
     const button = byId("rotateBridgeSecretButton");
     setButtonBusy(button, true, "生成中");
     try {
       const state = await api("/admin/api/bridge/rotate", { method: "POST" });
       currentState = state;
       renderState(state);
-      showGlobalAlert("新的设备连接 Key 已生成，请同步更新 PC 采集器和手机 App。", "success", 5000);
+      showGlobalAlert("新的设备连接 Key 已生成，请同步更新 Codex 插件和手机 App。", "success", 5000);
     } catch (error) {
       if (error.isAuthError) {
         clearToken();

@@ -36,6 +36,11 @@ test("usage snapshots preserve exact counters and validate the exchange rate", (
   assert.throws(() => normalizeUsageSnapshot({ ...sample(), usdCnyRate: 0.5 }), /usdCnyRate/i);
 });
 
+test("usage snapshots preserve the lightweight reporter source", () => {
+  const snapshot = normalizeUsageSnapshot({ ...sample(), source: "cw-usage-reporter" });
+  assert.equal(snapshot.source, "cw-usage-reporter");
+});
+
 test("usage history persists atomically across restarts", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "cw-usage-"));
   t.after(() => rm(directory, { recursive: true, force: true }));

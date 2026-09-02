@@ -100,7 +100,7 @@ export function createAdminApi(options = {}) {
   const adminToken = options.adminToken || "";
   const credentialStore = options.credentialStore || null;
   const usageStore = options.usageStore || null;
-  const syncStore = options.syncStore || null;
+  const snapshotStore = options.snapshotStore || null;
   const logger = options.logger || null;
   if (!providerManager) throw new TypeError("createAdminApi requires providerManager");
   let refreshedLoginId = null;
@@ -137,7 +137,7 @@ export function createAdminApi(options = {}) {
     const enriched = {
       ...state,
       usage: usageStore?.get?.() || null,
-      sync: await syncStore?.getSummary?.() || null,
+      sync: await snapshotStore?.getSummary?.() || null,
     };
     if (!credentialStore) return enriched;
     return {
@@ -231,7 +231,7 @@ export function createAdminApi(options = {}) {
         if (request.method !== "GET" && request.method !== "HEAD") {
           return result(405, { error: "method_not_allowed" }, { Allow: "GET, HEAD" });
         }
-        return result(200, await syncStore?.getSummary?.() || null);
+        return result(200, await snapshotStore?.getSummary?.() || null);
       }
 
       if (pathname === "/admin/api/diagnostics") {
@@ -244,7 +244,7 @@ export function createAdminApi(options = {}) {
           generatedAt: new Date().toISOString(),
           version: APP_VERSION,
           process: { uptimeSeconds: Math.round(process.uptime()), memory: process.memoryUsage() },
-          sync: await syncStore?.getDiagnostics?.() || null,
+          sync: await snapshotStore?.getDiagnostics?.() || null,
           logs: logger?.recent?.(limit) || [],
         });
       }
@@ -254,12 +254,12 @@ export function createAdminApi(options = {}) {
         if (request.method !== "DELETE") {
           return result(405, { error: "method_not_allowed" }, { Allow: "DELETE" });
         }
-        if (!usageStore?.forgetDevice && !syncStore?.forgetDevice) {
+        if (!usageStore?.forgetDevice && !snapshotStore?.forgetDevice) {
           return result(501, { error: "device_store_unavailable", message: "终端存储未启用" });
         }
         const deviceId = deviceRoute[1];
         const usage = await usageStore?.forgetDevice?.(deviceId) || null;
-        const sync = await syncStore?.forgetDevice?.(deviceId) || null;
+        const sync = await snapshotStore?.forgetDevice?.(deviceId) || null;
         return result(200, { ok: true, deviceId, usage, sync, state: await adminState() });
       }
 

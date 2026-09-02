@@ -1,0 +1,23 @@
+{
+  "name": "cw-development-sync",
+  "version": "0.1.0",
+  "description": "Review and transfer active Codex development snapshots through a CW NAS hub.",
+  "author": {
+    "name": "Codex Workspace Hub"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "CW Development Sync",
+    "shortDescription": "Sync reviewed development snapshots through CW.",
+    "longDescription": "Lets Codex review active Git changes, create encrypted development snapshots, preview remote changes, and apply them conflict-safely across PCs.",
+    "developerName": "Codex Workspace Hub",
+    "category": "Productivity",
+    "capabilities": [
+      "Local project review",
+      "Encrypted NAS snapshots",
+      "Conflict-safe restore"
+    ],
+    "defaultPrompt": "Review this project's active development changes and show what CW would sync. Do not publish or apply anything until I approve the preview."
+  },
+  "mcpServers": "./.mcp.json"
+}

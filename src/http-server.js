@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { createAdminApi } from "./admin-api.js";
 import { authenticateRequest } from "./auth.js";
 import { createCollectorApi } from "./collector-api.js";
+import { createSnapshotApi } from "./snapshot-api.js";
 
 const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_PUBLIC_DIR = join(MODULE_DIR, "..", "public");
@@ -84,6 +85,12 @@ function loadAdminAssets(publicDir) {
       contentType: "text/javascript; charset=utf-8",
       cacheControl: "no-store",
     }],
+    ["/admin/downloads/CWQuotaBridge-android-v0.3.1-beta7.apk", {
+      body: readFileSync(join(publicDir, "downloads", "CWQuotaBridge-android-v0.3.1-beta7.apk")),
+      contentType: "application/vnd.android.package-archive",
+      cacheControl: "public, max-age=86400, immutable",
+      contentDisposition: "attachment; filename=\"CWQuotaBridge-android-v0.3.1-beta7.apk\"",
+    }],
   ]);
 }
 
@@ -95,7 +102,7 @@ export function createGatewayServer(input, maybeOptions = {}) {
   const providerManager = options.providerManager || options.quotaService;
   const credentialStore = options.credentialStore || null;
   const usageStore = options.usageStore || null;
-  const syncStore = options.syncStore || null;
+  const snapshotStore = options.snapshotStore || null;
   const logger = options.logger || null;
   const bridgeSecret = () => credentialStore?.getBridgeSecret()
     || config.tokenMonitorSecret
@@ -108,10 +115,11 @@ export function createGatewayServer(input, maybeOptions = {}) {
     adminToken: config.adminToken,
     credentialStore,
     usageStore,
-    syncStore,
+    snapshotStore,
     logger,
   });
-  const handleCollectorApi = options.handleCollectorApi || createCollectorApi({ usageStore, syncStore, logger });
+  const handleCollectorApi = options.handleCollectorApi || createCollectorApi({ usageStore, logger });
+  const handleSnapshotApi = options.handleSnapshotApi || createSnapshotApi({ snapshotStore, logger });
 
   return createServer((request, response) => {
     void (async () => {
@@ -148,6 +156,24 @@ export function createGatewayServer(input, maybeOptions = {}) {
         return;
       }
 
+      if (pathname.startsWith("/api/cw/v1/")) {
+        if (!hasCredentialHeaders(request)) {
+          writeJson(request, response, 401, { error: "authentication_required" }, { "WWW-Authenticate": "Bearer" });
+          return;
+        }
+        if (!authenticateRequest(request, bridgeSecret())) {
+          writeJson(request, response, 403, { error: "forbidden" });
+          return;
+        }
+        const result = await handleSnapshotApi(request, pathname);
+        if (result.body !== undefined) {
+          writeBody(request, response, result.statusCode, result.body, result.contentType || "application/octet-stream", result.headers);
+        } else {
+          writeJson(request, response, result.statusCode, result.payload, result.headers);
+        }
+        return;
+      }
+
       if (pathname === "/" || pathname === "/admin") {
         if (request.method !== "GET" && request.method !== "HEAD") {
           writeJson(request, response, 405, { error: "method_not_allowed" }, { Allow: "GET, HEAD" });
@@ -167,6 +193,7 @@ export function createGatewayServer(input, maybeOptions = {}) {
         writeBody(request, response, 200, asset.body, asset.contentType, {
           "Cache-Control": asset.cacheControl,
           "Content-Security-Policy": ADMIN_CSP,
+          ...(asset.contentDisposition ? { "Content-Disposition": asset.contentDisposition } : {}),
         });
         return;
       }

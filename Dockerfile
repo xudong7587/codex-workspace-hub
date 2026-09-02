@@ -7,7 +7,7 @@ RUN apk add --no-cache binutils \
 FROM alpine:3.21
 
 LABEL org.opencontainers.image.title="Codex Workspace Hub" \
-      org.opencontainers.image.description="Low-memory multi-device Codex workspace, conversation backup, and quota hub" \
+      org.opencontainers.image.description="Low-memory encrypted Codex development snapshot and quota hub" \
       org.opencontainers.image.source="https://github.com/xudong7587/codex-workspace-hub"
 
 RUN apk add --no-cache ca-certificates libstdc++ su-exec tzdata \

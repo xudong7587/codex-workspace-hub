@@ -124,23 +124,25 @@ jobs:
           cache-from: type=gha,scope=container
           cache-to: type=gha,mode=max,scope=container
 
-  windows-collector:
+  client-downloads:
     runs-on: windows-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build lightweight collector
+      - name: Build token details reporter
         shell: cmd
-        run: collector-windows\build.cmd
+        run: usage-reporter-windows\build.cmd
 
-      - name: Upload collector artifact
+      - name: Upload client downloads
         uses: actions/upload-artifact@v4
         with:
-          name: CodexWorkspaceCollector-windows-x64
-          path: collector-windows/dist/CodexWorkspaceCollector.exe
+          name: Codex-Workspace-Hub-clients
+          path: |
+            usage-reporter-windows/dist/CWUsageReporter.exe
+            public/downloads/CWQuotaBridge-android-v0.3.1-beta7.apk
 
-      - name: Attach collector to tagged release
+      - name: Attach client downloads to tagged release
         if: startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
         env:
@@ -150,4 +152,4 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             gh release create $env:GITHUB_REF_NAME --title $env:GITHUB_REF_NAME --generate-notes
           }
-          gh release upload $env:GITHUB_REF_NAME collector-windows/dist/CodexWorkspaceCollector.exe --clobber
+          gh release upload $env:GITHUB_REF_NAME usage-reporter-windows/dist/CWUsageReporter.exe public/downloads/CWQuotaBridge-android-v0.3.1-beta7.apk --clobber

@@ -91,6 +91,18 @@ test("admin shell is served with strict browser security headers", async () => {
   });
 });
 
+test("mobile bridge APK is available from the management origin", async () => {
+  await withGateway({}, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/admin/downloads/CWQuotaBridge-android-v0.3.1-beta7.apk`, {
+      method: "HEAD",
+    });
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("content-type"), "application/vnd.android.package-archive");
+    assert.match(response.headers.get("content-disposition"), /CWQuotaBridge-android-v0\.3\.1-beta7\.apk/);
+    assert.equal(Number(response.headers.get("content-length")), 1_879_193);
+  });
+});
+
 test("GET /api/health does not expose upstream error details", async () => {
   const sensitiveError = "credential path C:/private/codex/auth.json failed";
   await withGateway({

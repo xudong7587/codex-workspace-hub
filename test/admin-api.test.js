@@ -285,11 +285,11 @@ test("admin can forget a terminal without deleting workspace storage", async () 
     get: () => ({ deviceCount: 0, devices: [] }),
     async forgetDevice(deviceId) { calls.push(["usage", deviceId]); return { removed: true }; },
   };
-  const syncStore = {
+  const snapshotStore = {
     getSummary: async () => ({ workspaceCount: 1, devices: [], workspaces: [{ id: "keep-project" }] }),
     async forgetDevice(deviceId) { calls.push(["sync", deviceId]); return { detachedFiles: 3 }; },
   };
-  const handle = createAdminApi({ providerManager: createManager(), adminToken: ADMIN_TOKEN, usageStore, syncStore });
+  const handle = createAdminApi({ providerManager: createManager(), adminToken: ADMIN_TOKEN, usageStore, snapshotStore });
   const response = await handle(request({ method: "DELETE", token: ADMIN_TOKEN }), "/admin/api/devices/old-terminal");
 
   assert.equal(response.statusCode, 200);
@@ -300,8 +300,8 @@ test("admin can forget a terminal without deleting workspace storage", async () 
 
 test("admin diagnostics returns bounded logs and sync integrity without exposing credentials", async () => {
   const logger = { recent: (limit) => [{ level: "info", message: "sync", limit }] };
-  const syncStore = { getDiagnostics: async () => ({ ok: true, missingBlobs: [] }) };
-  const handle = createAdminApi({ providerManager: createManager(), adminToken: ADMIN_TOKEN, logger, syncStore });
+  const snapshotStore = { getDiagnostics: async () => ({ ok: true, missingObjects: [] }) };
+  const handle = createAdminApi({ providerManager: createManager(), adminToken: ADMIN_TOKEN, logger, snapshotStore });
   const response = await handle(request({ token: ADMIN_TOKEN, url: "/admin/api/diagnostics?limit=12" }), "/admin/api/diagnostics");
   assert.equal(response.statusCode, 200);
   assert.equal(response.payload.sync.ok, true);
