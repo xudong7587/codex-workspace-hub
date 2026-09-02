@@ -140,7 +140,7 @@ jobs:
           name: Codex-Workspace-Hub-clients
           path: |
             usage-reporter-windows/dist/CWUsageReporter.exe
-            public/downloads/CWQuotaBridge-android-v0.3.1-beta7.apk
+            public/downloads/CWQuotaBridge-android-v0.3.2-beta8.apk
 
       - name: Attach client downloads to tagged release
         if: startsWith(github.ref, 'refs/tags/v')
@@ -152,4 +152,4 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             gh release create $env:GITHUB_REF_NAME --title $env:GITHUB_REF_NAME --generate-notes
           }
-          gh release upload $env:GITHUB_REF_NAME usage-reporter-windows/dist/CWUsageReporter.exe public/downloads/CWQuotaBridge-android-v0.3.1-beta7.apk --clobber
+          gh release upload $env:GITHUB_REF_NAME usage-reporter-windows/dist/CWUsageReporter.exe public/downloads/CWQuotaBridge-android-v0.3.2-beta8.apk --clobber

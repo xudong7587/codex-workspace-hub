@@ -25,7 +25,7 @@ function close(server) {
   });
 }
 
-async function withGateway({ stats = FRESH_STATS, health, credentialStore } = {}, run) {
+async function withGateway({ stats = FRESH_STATS, health, credentialStore, usageStore } = {}, run) {
   const quotaService = {
     getStats: () => stats,
     getHealth: () => health ?? ({
@@ -43,6 +43,7 @@ async function withGateway({ stats = FRESH_STATS, health, credentialStore } = {}
     config: { tokenMonitorSecret: SECRET },
     quotaService,
     credentialStore,
+    usageStore,
   });
   await listen(server);
   const address = server.address();
@@ -88,18 +89,20 @@ test("admin shell is served with strict browser security headers", async () => {
     const body = await response.text();
     assert.match(body, /Codex Workspace Hub/);
     assert.match(body, /id="coreQuotaDock"/);
+    assert.match(body, /href="https:\/\/github\.com\/xudong7587\/codex-workspace-hub\/releases\/latest"/);
+    assert.doesNotMatch(body, /mobile-download-button" href="\/admin\/downloads\//);
   });
 });
 
 test("mobile bridge APK is available from the management origin", async () => {
   await withGateway({}, async (baseUrl) => {
-    const response = await fetch(`${baseUrl}/admin/downloads/CWQuotaBridge-android-v0.3.1-beta7.apk`, {
+    const response = await fetch(`${baseUrl}/admin/downloads/CWQuotaBridge-android-v0.3.2-beta8.apk`, {
       method: "HEAD",
     });
     assert.equal(response.status, 200);
     assert.equal(response.headers.get("content-type"), "application/vnd.android.package-archive");
-    assert.match(response.headers.get("content-disposition"), /CWQuotaBridge-android-v0\.3\.1-beta7\.apk/);
-    assert.equal(Number(response.headers.get("content-length")), 1_879_193);
+    assert.match(response.headers.get("content-disposition"), /CWQuotaBridge-android-v0\.3\.2-beta8\.apk/);
+    assert.equal(Number(response.headers.get("content-length")), 1_879_189);
   });
 });
 
@@ -185,6 +188,35 @@ test("GET /api/stats serves a fresh APK-compatible payload", async () => {
     assert.equal(response.status, 200);
     assert.equal(response.headers.get("cache-control"), "no-store");
     assert.deepEqual(await response.json(), FRESH_STATS);
+  });
+});
+
+test("GET /api/stats exposes CW usage and applies the dashboard estimate", async () => {
+  const usageStore = {
+    get: () => ({
+      capturedAt: "2026-09-02T07:30:00.000Z",
+      source: "cw-usage-reporter",
+      deviceCount: 0,
+      usdCnyRate: 7.2,
+      periods: {
+        day: { totalTokens: 250_000, costUsd: 0 },
+        week: { totalTokens: 1_000_000, costUsd: 0 },
+        month: { totalTokens: 2_000_000, costUsd: 5.5 },
+        total: { totalTokens: 3_000_000, costUsd: 0 },
+      },
+    }),
+  };
+  await withGateway({ usageStore }, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/stats`, { headers: apkHeaders() });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.deepEqual(body.limits, FRESH_STATS.limits);
+    assert.equal(body.usage.periods.total.totalTokens, 3_000_000);
+    assert.equal(body.usage.periods.total.costUsd, 12);
+    assert.equal(body.usage.periods.total.estimated, true);
+    assert.equal(body.usage.periods.month.costUsd, 5.5);
+    assert.equal(body.usage.periods.month.estimated, false);
+    assert.equal(body.usage.usdCnyRate, 7.2);
   });
 });
 

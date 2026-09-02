@@ -200,18 +200,18 @@ Codex 会列出准备上传和排除的文件。确认列表无误后再说：
 
 ## 手机与手表
 
-[下载最新版额度桥接 APK（0.3.1 standalone beta7）](https://github.com/xudong7587/codex-workspace-hub/releases/latest/download/CWQuotaBridge-android-v0.3.1-beta7.apk)
+[前往最新 Release 下载额度桥接 APK](https://github.com/xudong7587/codex-workspace-hub/releases/latest)
 
 安装 APK 后，在“额度桥接”中填写：
 
 - CW 根地址，例如 `https://cw.example.com`
 - 管理页面“移动端数据中心”中的设备连接 Key
 
-不要把管理密码填进 APK。连接成功后，手机可以读取 CW 中的 Codex 等额度，并沿现有蓝牙健康通道发送给兼容手表。
+不要把管理密码填进 APK。Codex 可选择 CW Hub 或设备码手机直连，两条渠道互斥，宠物卡片只展示当前选中的 Codex 渠道。CW 渠道读取后端返回的 Token 与金额；手机直连固定按每百万 Token 4 美元估算。连接成功后，手机会沿现有蓝牙健康通道发送额度给兼容手表。
 
 当前链路面向 vivo WATCH GT、vivo WATCH GT 2 及对应的 iQOO 版本。第三方安装链路从早期 VWatch / Token Monitor 兼容方式演进到 [OrbitV](https://orbitv.top/) 和它的[轻腕市场](https://qingwear.top/)，额度表盘名称为 `Clawd_on_Vwatch`。早期 vivo WATCH 1/2 与 WATCH GT 系列不是同一平台，不在这条链路的支持范围内。
 
-beta7 APK 的 SHA-256 为 `03C86C014A97D190F626FCE3D5CD3DA7D250C44570007A81FB3549F363CE2CF4`。
+beta8 APK 的 SHA-256 为 `5CE118B07FE7C89A8D685B4F85BE70F7FE9B0977C303299772142C4DAEDF0843`。
 
 APK 不接触 PC 项目文件。DeepSeek 仍由 APK 直接连接，不经过 CW Docker。
 

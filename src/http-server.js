@@ -68,6 +68,36 @@ function publicHealth(quotaService) {
   };
 }
 
+function bridgeUsage(usage) {
+  if (!usage?.periods || typeof usage.periods !== "object") return null;
+  const usdCnyRate = Number.isFinite(Number(usage.usdCnyRate)) && Number(usage.usdCnyRate) > 0
+    ? Number(usage.usdCnyRate)
+    : 7.2;
+  const periods = {};
+  let hasData = false;
+
+  for (const name of ["day", "week", "month", "total"]) {
+    const source = usage.periods[name];
+    if (!source || typeof source !== "object") continue;
+    const totalTokens = Math.max(0, Number(source.totalTokens) || 0);
+    const reportedCostUsd = Math.max(0, Number(source.costUsd) || 0);
+    const estimated = reportedCostUsd <= 0 && totalTokens > 0;
+    const costUsd = estimated ? totalTokens / 1_000_000 * 4 : reportedCostUsd;
+    periods[name] = { totalTokens, costUsd, estimated };
+    hasData ||= totalTokens > 0 || costUsd > 0;
+  }
+
+  if (!hasData || !periods.total) return null;
+  return {
+    capturedAt: usage.capturedAt || null,
+    source: usage.source || "cw",
+    deviceCount: Math.max(0, Number(usage.deviceCount) || 0),
+    usdCnyRate,
+    estimated: Boolean(periods.total.estimated),
+    periods,
+  };
+}
+
 function loadAdminAssets(publicDir) {
   return new Map([
     ["/admin/", {
@@ -85,11 +115,11 @@ function loadAdminAssets(publicDir) {
       contentType: "text/javascript; charset=utf-8",
       cacheControl: "no-store",
     }],
-    ["/admin/downloads/CWQuotaBridge-android-v0.3.1-beta7.apk", {
-      body: readFileSync(join(publicDir, "downloads", "CWQuotaBridge-android-v0.3.1-beta7.apk")),
+    ["/admin/downloads/CWQuotaBridge-android-v0.3.2-beta8.apk", {
+      body: readFileSync(join(publicDir, "downloads", "CWQuotaBridge-android-v0.3.2-beta8.apk")),
       contentType: "application/vnd.android.package-archive",
       cacheControl: "public, max-age=86400, immutable",
-      contentDisposition: "attachment; filename=\"CWQuotaBridge-android-v0.3.1-beta7.apk\"",
+      contentDisposition: "attachment; filename=\"CWQuotaBridge-android-v0.3.2-beta8.apk\"",
     }],
   ]);
 }
@@ -252,7 +282,8 @@ export function createGatewayServer(input, maybeOptions = {}) {
         });
         return;
       }
-      writeJson(request, response, 200, stats);
+      const usage = bridgeUsage(usageStore?.get?.());
+      writeJson(request, response, 200, usage ? { ...stats, usage } : stats);
     })().catch((error) => {
       logger?.error?.("Unhandled HTTP request error", { errorType: error?.name || "Error" });
       if (!response.headersSent) {
