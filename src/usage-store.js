@@ -6,6 +6,7 @@ const SCHEMA_VERSION = 2;
 const MAX_FILE_BYTES = 2 * 1024 * 1024;
 const MAX_COUNTER = 10 ** 16;
 const PERIOD_NAMES = Object.freeze(["day", "week", "month", "total"]);
+const COLLECTOR_ONLINE_MS = 15 * 60_000;
 
 function finiteNumber(value, name, { min = 0, max = MAX_COUNTER } = {}) {
   const number = Number(value);
@@ -125,11 +126,129 @@ function aggregateDevices(devices) {
   };
 }
 
+function codexQuotaWindow(stats) {
+  const providers = Array.isArray(stats?.limits?.providers) ? stats.limits.providers : [];
+  const codex = providers.find((provider) => provider?.provider === "codex");
+  const windows = Array.isArray(codex?.windows) ? codex.windows : [];
+  const window = windows.find((item) => item?.kind === "weekly")
+    || windows.find((item) => item?.kind === "session");
+  const usedPercent = Number(window?.usedPercent);
+  if (!Number.isFinite(usedPercent)) return null;
+  return {
+    kind: window.kind || "unknown",
+    usedPercent: Math.min(100, Math.max(0, usedPercent)),
+    resetsAt: typeof window.resetsAt === "string" ? window.resetsAt : null,
+  };
+}
+
+function periodRatio(period, fallback) {
+  const tokens = Number(period?.totalTokens) || 0;
+  const cost = Number(period?.costUsd) || 0;
+  return tokens > 0 && cost > 0 ? cost / tokens : fallback;
+}
+
+function boundedRate(value, fallback) {
+  return Number.isFinite(value) && value >= 1_000 && value <= 10 ** 10 ? value : fallback;
+}
+
+function currentKeys(now) {
+  const date = new Date(now);
+  const day = date.toISOString().slice(0, 10);
+  const weekDate = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  const weekday = weekDate.getUTCDay() || 7;
+  weekDate.setUTCDate(weekDate.getUTCDate() + 4 - weekday);
+  const yearStart = new Date(Date.UTC(weekDate.getUTCFullYear(), 0, 1));
+  const week = Math.ceil((((weekDate - yearStart) / 86_400_000) + 1) / 7);
+  return { day, week: `${weekDate.getUTCFullYear()}-W${String(week).padStart(2, "0")}`, month: day.slice(0, 7) };
+}
+
+function addProjectedUsage(period, tokenDelta, costDelta) {
+  if (!period || tokenDelta <= 0) return;
+  period.totalTokens = Math.round((Number(period.totalTokens) || 0) + tokenDelta);
+  period.costUsd = Math.max(0, Number(period.costUsd) || 0) + costDelta;
+  period.estimated = true;
+}
+
+export function projectUsageSnapshot(exactUsage, quotaStats, previousState, now = Date.now()) {
+  if (!exactUsage?.periods?.total) return { usage: exactUsage || null, state: previousState || null };
+  const usage = structuredClone(exactUsage);
+  const capturedAt = Date.parse(usage.capturedAt || "");
+  const collectorOnline = Number.isFinite(capturedAt) && Math.max(0, now - capturedAt) <= COLLECTOR_ONLINE_MS;
+  const quota = codexQuotaWindow(quotaStats);
+  let state = previousState && typeof previousState === "object" ? structuredClone(previousState) : null;
+  const exactChanged = state?.baselineCapturedAt !== usage.capturedAt;
+
+  if (collectorOnline || exactChanged || !state) {
+    let tokensPerPercent = boundedRate(state?.tokensPerPercent, null);
+    if (state && exactChanged && quota && state.lastQuota?.resetsAt === quota.resetsAt) {
+      const quotaDelta = quota.usedPercent - Number(state.lastQuota.usedPercent || 0);
+      const tokenDelta = Number(usage.periods.total.totalTokens || 0) - Number(state.baselineTotalTokens || 0);
+      if (quotaDelta > 0.01 && tokenDelta > 0) {
+        const sample = boundedRate(tokenDelta / quotaDelta, null);
+        if (sample) tokensPerPercent = tokensPerPercent ? (tokensPerPercent * 0.65) + (sample * 0.35) : sample;
+      }
+    }
+    if (!tokensPerPercent && quota?.usedPercent > 0) {
+      tokensPerPercent = boundedRate(Number(usage.periods.week?.totalTokens || 0) / quota.usedPercent, null);
+    }
+    state = {
+      baselineCapturedAt: usage.capturedAt,
+      baselineTotalTokens: Number(usage.periods.total.totalTokens) || 0,
+      tokensPerPercent,
+      costUsdPerToken: periodRatio(usage.periods.week, periodRatio(usage.periods.total, 4 / 1_000_000)),
+      lastQuota: quota,
+      accumulatedQuotaPercent: 0,
+    };
+  }
+
+  usage.collectorOnline = collectorOnline;
+  usage.collectorLastSeenAt = usage.capturedAt;
+  if (collectorOnline) {
+    usage.mode = "collector";
+    usage.estimated = false;
+    return { usage, state };
+  }
+
+  if (!quota || !state?.tokensPerPercent) {
+    usage.mode = "collector_baseline";
+    usage.estimated = false;
+    return { usage, state };
+  }
+
+  const last = state.lastQuota;
+  if (last) {
+    const increment = last.resetsAt === quota.resetsAt
+      ? Math.max(0, quota.usedPercent - Number(last.usedPercent || 0))
+      : Math.max(0, quota.usedPercent);
+    state.accumulatedQuotaPercent = Math.max(0, Number(state.accumulatedQuotaPercent) || 0) + increment;
+  }
+  state.lastQuota = quota;
+  const tokenDelta = state.accumulatedQuotaPercent * state.tokensPerPercent;
+  const costDelta = tokenDelta * (Number(state.costUsdPerToken) || (4 / 1_000_000));
+  const keys = currentKeys(now);
+  addProjectedUsage(usage.periods.total, tokenDelta, costDelta);
+  if (usage.dayKey === keys.day) addProjectedUsage(usage.periods.day, tokenDelta, costDelta);
+  if (usage.weekKey === keys.week) addProjectedUsage(usage.periods.week, tokenDelta, costDelta);
+  if (usage.monthKey === keys.month) addProjectedUsage(usage.periods.month, tokenDelta, costDelta);
+  usage.source = "hybrid";
+  usage.mode = "hybrid_estimate";
+  usage.estimated = true;
+  usage.estimatedSince = usage.capturedAt;
+  usage.estimateBasis = {
+    provider: "codex",
+    quotaWindow: quota.kind,
+    quotaPercentDelta: state.accumulatedQuotaPercent,
+    tokensPerPercent: state.tokensPerPercent,
+  };
+  return { usage, state };
+}
+
 export class UsageStore {
   constructor(options = {}) {
     this.dataDir = options.dataDir || "/data";
     this.filePath = options.filePath || join(this.dataDir, "usage-history.json");
     this.devices = {};
+    this.projection = null;
     this.writePromise = Promise.resolve();
   }
 
@@ -138,6 +257,9 @@ export class UsageStore {
       const raw = await readFile(this.filePath);
       if (raw.byteLength > MAX_FILE_BYTES) throw new Error("Usage history file is too large");
       const parsed = JSON.parse(raw.toString("utf8"));
+      this.projection = parsed?.projection && typeof parsed.projection === "object"
+        ? structuredClone(parsed.projection)
+        : null;
       const snapshots = parsed?.snapshots || (parsed?.devices && !Array.isArray(parsed.devices) ? parsed.devices : null);
       if (parsed?.schemaVersion === SCHEMA_VERSION && snapshots) {
         for (const [id, value] of Object.entries(snapshots)) {
@@ -154,6 +276,14 @@ export class UsageStore {
 
   get() {
     return aggregateDevices(this.devices);
+  }
+
+  async getProjected(quotaStats, now = Date.now()) {
+    const previous = JSON.stringify(this.projection);
+    const projected = projectUsageSnapshot(this.get(), quotaStats, this.projection, now);
+    this.projection = projected.state;
+    if (JSON.stringify(this.projection) !== previous) await this.persist();
+    return projected.usage;
   }
 
   async replace(value) {
@@ -180,7 +310,7 @@ export class UsageStore {
 
   async persist() {
     const aggregate = aggregateDevices(this.devices);
-    const body = `${JSON.stringify({ ...aggregate, schemaVersion: SCHEMA_VERSION, snapshots: this.devices })}\n`;
+    const body = `${JSON.stringify({ ...aggregate, schemaVersion: SCHEMA_VERSION, snapshots: this.devices, projection: this.projection })}\n`;
     if (Buffer.byteLength(body) > MAX_FILE_BYTES) throw new Error("Usage history file is too large");
     this.writePromise = this.writePromise.catch(() => {}).then(async () => {
       await mkdir(dirname(this.filePath), { recursive: true, mode: 0o700 });
@@ -207,3 +337,4 @@ export class UsageStore {
 
 export const USAGE_SCHEMA_VERSION = SCHEMA_VERSION;
 export const USAGE_PERIOD_NAMES = PERIOD_NAMES;
+export const USAGE_COLLECTOR_ONLINE_MS = COLLECTOR_ONLINE_MS;

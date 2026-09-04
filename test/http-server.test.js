@@ -96,12 +96,12 @@ test("admin shell is served with strict browser security headers", async () => {
 
 test("mobile bridge APK is available from the management origin", async () => {
   await withGateway({}, async (baseUrl) => {
-    const response = await fetch(`${baseUrl}/admin/downloads/CWQuotaBridge-android-v0.3.2-beta8.apk`, {
+    const response = await fetch(`${baseUrl}/admin/downloads/CWQuotaBridge-android-v0.3.3-beta9.apk`, {
       method: "HEAD",
     });
     assert.equal(response.status, 200);
     assert.equal(response.headers.get("content-type"), "application/vnd.android.package-archive");
-    assert.match(response.headers.get("content-disposition"), /CWQuotaBridge-android-v0\.3\.2-beta8\.apk/);
+    assert.match(response.headers.get("content-disposition"), /CWQuotaBridge-android-v0\.3\.3-beta9\.apk/);
     assert.equal(Number(response.headers.get("content-length")), 1_879_189);
   });
 });
@@ -217,6 +217,33 @@ test("GET /api/stats exposes CW usage and applies the dashboard estimate", async
     assert.equal(body.usage.periods.month.costUsd, 5.5);
     assert.equal(body.usage.periods.month.estimated, false);
     assert.equal(body.usage.usdCnyRate, 7.2);
+    assert.equal(body.usage.mode, "collector");
+    assert.equal(body.usage.collectorOnline, true);
+  });
+});
+
+test("GET /api/stats preserves a projected cost supplied by the usage store", async () => {
+  const usageStore = {
+    get: () => ({
+      capturedAt: "2026-09-04T07:30:00.000Z",
+      source: "hybrid",
+      mode: "hybrid_estimate",
+      collectorOnline: false,
+      usdCnyRate: 7.2,
+      periods: {
+        day: { totalTokens: 300_000, costUsd: 2.25, estimated: true },
+        week: { totalTokens: 1_200_000, costUsd: 8.5, estimated: true },
+        month: { totalTokens: 2_500_000, costUsd: 17.75, estimated: true },
+        total: { totalTokens: 3_500_000, costUsd: 25.25, estimated: true },
+      },
+    }),
+  };
+  await withGateway({ usageStore }, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/stats`, { headers: apkHeaders() });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.usage.periods.total.costUsd, 25.25);
+    assert.equal(body.usage.periods.total.estimated, true);
   });
 });
 

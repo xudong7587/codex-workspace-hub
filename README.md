@@ -7,6 +7,8 @@
 
 CW 由一个运行在 NAS 上的 Docker 服务和几个按需安装的客户端组成。各部分彼此独立：只想看额度，不必安装项目同步插件；只想同步项目，也不必安装手机 APK。
 
+当前发布版本为 CW `v1.0.2`。配套的 Windows Token 详情采集器版本为 `v1.0.2`，Android 额度桥接版本为 `v0.3.3-beta9`。
+
 ## 我应该安装什么
 
 | 你的需求 | 需要安装 |
@@ -196,11 +198,11 @@ Codex 会列出准备上传和排除的文件。确认列表无误后再说：
 
 首次启动只需填写 CW HTTPS 根地址、设备连接 Key 和设备名称。它不会上传提示词、回答或会话原文，也没有项目同步和 NAS 文件管理能力。
 
-有采集器时，CW 优先按模型计算 API 等价价值；无法识别模型或只有总 Token 时，按每百万 Token 4 美元估算。没有采集器时，账户剩余额度仍可显示，但不会凭空生成 PC 本地的详细 Token 历史。
+有采集器时，CW 优先按模型计算 API 等价价值；无法识别模型或只有总 Token 时，按每百万 Token 4 美元估算。采集器超过 15 分钟没有上报后，CW 会保留最后一次精确数据为基线，结合 Codex 账号额度百分比的后续变化推算离线增量，并在管理页、手机和手表端明确标记为“离线估算”。采集器恢复后自动用新的精确快照校准，不重复累计。没有历史基线或无法建立校准率时只保留最后精确值，不把额度百分比冒充真实 Token。
 
 ## 手机与手表
 
-[前往最新 Release 下载额度桥接 APK](https://github.com/xudong7587/codex-workspace-hub/releases/latest)
+[下载额度桥接 v0.3.3-beta9 APK](https://github.com/xudong7587/codex-workspace-hub/releases/latest/download/CWQuotaBridge-android-v0.3.3-beta9.apk)
 
 安装 APK 后，在“额度桥接”中填写：
 
@@ -211,7 +213,9 @@ Codex 会列出准备上传和排除的文件。确认列表无误后再说：
 
 当前链路面向 vivo WATCH GT、vivo WATCH GT 2 及对应的 iQOO 版本。第三方安装链路从早期 VWatch / Token Monitor 兼容方式演进到 [OrbitV](https://orbitv.top/) 和它的[轻腕市场](https://qingwear.top/)，额度表盘名称为 `Clawd_on_Vwatch`。早期 vivo WATCH 1/2 与 WATCH GT 系列不是同一平台，不在这条链路的支持范围内。
 
-beta8 APK 的 SHA-256 为 `5CE118B07FE7C89A8D685B4F85BE70F7FE9B0977C303299772142C4DAEDF0843`。
+beta9 调整了 4×2 和 5×2 桌面小挂件：拉伸后气泡、宠物、额度环和金额会保持均衡间距；金额列加宽，并按内容自动缩小字号，五位金额也能完整显示。
+
+beta9 APK 的 SHA-256 为 `5C9237BAB4AF07FF9C3154240F1E00E567B50663479E3B36A9B4D5EF2CE3B123`。它与 beta8 使用同一签名，可以直接覆盖安装并保留原有配置。若桌面仍缓存旧布局，请删除原小挂件后重新添加。
 
 APK 不接触 PC 项目文件。DeepSeek 仍由 APK 直接连接，不经过 CW Docker。
 
@@ -249,7 +253,7 @@ codex plugin add cw-development-sync@codex-workspace-hub
 
 ### 为什么页面有额度，却没有今日或本周 Token 价值？
 
-CW 的设备码授权能读取账户剩余额度，但详细 Token 历史来自 PC 本地 Codex 会话。请安装 `CWUsageReporter.exe` 并保持它运行。
+CW 的设备码授权能读取账户剩余额度，但无法直接取得 PC 本地的完整 Token 历史。先安装一次 `CWUsageReporter.exe` 建立精确基线；采集器在线时持续上报准确数据，离线后 CW 会根据额度变化延续估算。没有历史基线时，CW 不会用额度百分比虚构 Token 数量。
 
 ### 为什么 APK 或插件提示 401/403？
 

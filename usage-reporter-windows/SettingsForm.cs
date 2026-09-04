@@ -1,26 +1,23 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
-using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 
 namespace CWUsageReporter {
-    internal sealed class CardPanel : Panel {
-        public CardPanel() { DoubleBuffered = true; BackColor = Color.FromArgb(250, 253, 252); Padding = new Padding(22); }
-        protected override void OnPaint(PaintEventArgs e) {
-            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            Rectangle rect = new Rectangle(0, 0, Width - 1, Height - 1);
-            using (GraphicsPath path = Rounded(rect, 18))
-            using (Pen pen = new Pen(Color.FromArgb(220, 231, 226))) e.Graphics.DrawPath(pen, path);
-            base.OnPaint(e);
-        }
-        private static GraphicsPath Rounded(Rectangle rect, int radius) {
-            int d = radius * 2; GraphicsPath path = new GraphicsPath();
-            path.AddArc(rect.X, rect.Y, d, d, 180, 90); path.AddArc(rect.Right - d, rect.Y, d, d, 270, 90);
-            path.AddArc(rect.Right - d, rect.Bottom - d, d, d, 0, 90); path.AddArc(rect.X, rect.Bottom - d, d, d, 90, 90); path.CloseFigure(); return path;
-        }
+    internal static class Theme {
+        public static readonly Color Background = Color.FromArgb(247, 249, 248);
+        public static readonly Color Surface = Color.FromArgb(255, 255, 255);
+        public static readonly Color Text = Color.FromArgb(19, 34, 29);
+        public static readonly Color TextSoft = Color.FromArgb(83, 103, 95);
+        public static readonly Color TextFaint = Color.FromArgb(126, 143, 136);
+        public static readonly Color Border = Color.FromArgb(218, 227, 223);
+        public static readonly Color Accent = Color.FromArgb(8, 122, 88);
+        public static readonly Color Warning = Color.FromArgb(151, 99, 16);
     }
 
     internal sealed class SettingsForm : Form {
+        private const string UiFontName = "Microsoft YaHei UI";
+        private static readonly Dictionary<string, Font> FontCache = new Dictionary<string, Font>();
         private readonly TextBox hubUrl = Input();
         private readonly TextBox key = Input();
         private readonly TextBox device = Input();
@@ -31,91 +28,122 @@ namespace CWUsageReporter {
         private readonly ReporterConfig original;
         public ReporterConfig Value { get; private set; }
 
-        public SettingsForm(ReporterConfig config, string status, DateTime? lastSuccess, long todayTokens, double todayValueCny) {
-            original = config;
-            Text = "CW Token 详情采集器";
-            Icon = SystemIcons.Application;
-            StartPosition = FormStartPosition.CenterScreen;
-            MinimumSize = new Size(760, 680);
-            ClientSize = new Size(800, 700);
-            BackColor = Color.FromArgb(241, 246, 243);
-            ForeColor = Color.FromArgb(20, 35, 30);
-            Font = new Font("Segoe UI", 10F);
-            AutoScaleMode = AutoScaleMode.Dpi;
-            FormBorderStyle = FormBorderStyle.Sizable;
+        public SettingsForm(ReporterConfig config, string status, DateTime? lastSuccess, UsageOverview usage) {
+            original = config; Text = "CW Token 详情采集器";
+            Icon = Program.AppIcon;
+            StartPosition = FormStartPosition.CenterScreen; MinimumSize = new Size(850, 700); ClientSize = new Size(940, 720);
+            BackColor = Theme.Background; ForeColor = Theme.Text; Font = FontOf(16F, FontStyle.Regular);
+            AutoScaleMode = AutoScaleMode.None; FormBorderStyle = FormBorderStyle.Sizable;
 
-            TableLayoutPanel root = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(36, 30, 36, 28), ColumnCount = 1, RowCount = 4, BackColor = BackColor };
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 100));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 112));
-            root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 74));
+            TableLayoutPanel root = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(38, 26, 38, 20), ColumnCount = 1, RowCount = 8, BackColor = Theme.Background };
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 102)); root.RowStyles.Add(new RowStyle(SizeType.Absolute, 1));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 51)); root.RowStyles.Add(new RowStyle(SizeType.Absolute, 124));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 1)); root.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
+            root.RowStyles.Add(new RowStyle(SizeType.Percent, 100)); root.RowStyles.Add(new RowStyle(SizeType.Absolute, 56));
             Controls.Add(root);
+            root.Controls.Add(BuildHeading(), 0, 0); root.Controls.Add(Line(), 0, 1);
+            root.Controls.Add(BuildStatus(config, status, lastSuccess, usage), 0, 2); root.Controls.Add(BuildMetrics(usage, config.UsdCnyRate), 0, 3);
+            root.Controls.Add(Line(), 0, 4); root.Controls.Add(BuildSectionHeading(), 0, 5); root.Controls.Add(BuildSettings(), 0, 6); root.Controls.Add(BuildActions(), 0, 7);
 
-            Panel heading = new Panel { Dock = DockStyle.Fill, BackColor = BackColor };
-            heading.Controls.Add(TextLabel("CW · TOKEN REPORTER", 10, FontStyle.Bold, Color.FromArgb(8, 122, 88), new Point(0, 2), new Size(400, 20)));
-            heading.Controls.Add(TextLabel("只采集 Token，不接触项目文件", 23, FontStyle.Bold, ForeColor, new Point(0, 27), new Size(680, 34)));
-            heading.Controls.Add(TextLabel("本机汇总 Codex 会话用量，定时向 CW 上报统计数字。", 10, FontStyle.Regular, Color.FromArgb(91, 109, 102), new Point(0, 68), new Size(680, 23)));
-            root.Controls.Add(heading, 0, 0);
+            hubUrl.Text = config.HubUrl ?? ""; key.UseSystemPasswordChar = true; key.Text = config.IsReady() ? "••••••••••••" : "";
+            device.Text = config.DeviceId ?? ""; interval.Value = Math.Max(interval.Minimum, Math.Min(interval.Maximum, config.IntervalMinutes));
+            rate.Value = Math.Max(rate.Minimum, Math.Min(rate.Maximum, (decimal)config.UsdCnyRate)); startup.Checked = config.StartWithWindows;
+        }
 
-            CardPanel statusCard = new CardPanel { Dock = DockStyle.Fill, Margin = new Padding(0, 0, 0, 16) };
-            Label dot = TextLabel("●", 15, FontStyle.Regular, config.IsReady() ? Color.FromArgb(8, 122, 88) : Color.FromArgb(139, 93, 16), new Point(22, 20), new Size(30, 28));
-            statusCard.Controls.Add(dot);
-            statusCard.Controls.Add(TextLabel(status ?? "等待连接", 12, FontStyle.Bold, ForeColor, new Point(57, 19), new Size(620, 27)));
-            string detail = lastSuccess.HasValue ? "今日 " + FormatTokens(todayTokens) + " tokens · API 等价价值约 ¥" + todayValueCny.ToString("0.00") : "保存连接后将立即进行首次上报";
-            statusCard.Controls.Add(TextLabel(detail, 9, FontStyle.Regular, Color.FromArgb(128, 144, 137), new Point(58, 50), new Size(620, 24)));
-            root.Controls.Add(statusCard, 0, 1);
+        private Control BuildHeading() {
+            TableLayoutPanel heading = new TableLayoutPanel { Dock = DockStyle.Fill, BackColor = Theme.Background, ColumnCount = 2, RowCount = 1, Margin = new Padding(0) };
+            heading.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 68)); heading.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            heading.Controls.Add(new PictureBox { Dock = DockStyle.Fill, Margin = new Padding(0, 8, 18, 28), SizeMode = PictureBoxSizeMode.Zoom, Image = Program.AppBitmap }, 0, 0);
+            TableLayoutPanel copy = new TableLayoutPanel { Dock = DockStyle.Fill, BackColor = Theme.Background, ColumnCount = 1, RowCount = 4, Margin = new Padding(0) };
+            copy.RowStyles.Add(new RowStyle(SizeType.Absolute, 20)); copy.RowStyles.Add(new RowStyle(SizeType.Absolute, 40)); copy.RowStyles.Add(new RowStyle(SizeType.Absolute, 27)); copy.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            copy.Controls.Add(LabelOf("CW  /  TOKEN REPORTER", 14F, FontStyle.Bold, Theme.Accent), 0, 0);
+            copy.Controls.Add(LabelOf("Token 用量采集器", 30F, FontStyle.Bold, Theme.Text), 0, 1);
+            copy.Controls.Add(LabelOf("安静地汇总 Codex 用量；不读取提示词、回答或项目文件。", 15F, FontStyle.Regular, Theme.TextSoft), 0, 2);
+            heading.Controls.Add(copy, 1, 0); return heading;
+        }
 
-            CardPanel form = new CardPanel { Dock = DockStyle.Fill, Margin = new Padding(0) };
-            TableLayoutPanel fields = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 6, BackColor = Color.Transparent };
+        private Control BuildStatus(ReporterConfig config, string status, DateTime? lastSuccess, UsageOverview usage) {
+            TableLayoutPanel row = new TableLayoutPanel { Dock = DockStyle.Fill, BackColor = Theme.Background, ColumnCount = 2, RowCount = 1, Margin = new Padding(0) };
+            row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 26)); row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            Label dot = LabelOf("●", 16F, FontStyle.Regular, config.IsReady() ? Theme.Accent : Theme.Warning);
+            string meta = lastSuccess.HasValue ? "  ·  CW 汇总 " + Math.Max(1, usage == null ? 1 : usage.DeviceCount) + " 台设备" : "  ·  保存后立即上报";
+            Label state = LabelOf((status ?? "等待连接") + meta, 16F, FontStyle.Bold, Theme.Text); row.Controls.Add(dot, 0, 0); row.Controls.Add(state, 1, 0); return row;
+        }
+
+        private Control BuildMetrics(UsageOverview usage, double fallbackRate) {
+            TableLayoutPanel strip = new TableLayoutPanel { Dock = DockStyle.Fill, BackColor = Theme.Background, ColumnCount = 4, RowCount = 1, Margin = new Padding(0) };
+            for (int i = 0; i < 4; i++) strip.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
+            double exchange = usage == null ? fallbackRate : usage.UsdCnyRate;
+            strip.Controls.Add(Metric("今日", usage == null ? null : usage.Day, exchange, true), 0, 0); strip.Controls.Add(Metric("本周", usage == null ? null : usage.Week, exchange, true), 1, 0);
+            strip.Controls.Add(Metric("本月", usage == null ? null : usage.Month, exchange, true), 2, 0); strip.Controls.Add(Metric("累计", usage == null ? null : usage.Total, exchange, false), 3, 0); return strip;
+        }
+
+        private Control Metric(string title, UsagePeriodView period, double exchange, bool divider) {
+            Panel host = new Panel { Dock = DockStyle.Fill, BackColor = Theme.Background, Margin = new Padding(0), Padding = new Padding(16, 9, 16, 8) };
+            TableLayoutPanel body = new TableLayoutPanel { Dock = DockStyle.Fill, BackColor = Theme.Background, ColumnCount = 1, RowCount = 3, Margin = new Padding(0) };
+            body.RowStyles.Add(new RowStyle(SizeType.Absolute, 24)); body.RowStyles.Add(new RowStyle(SizeType.Absolute, 42)); body.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            string value = period == null ? "等待数据" : (period.Estimated ? "估算  " : "折合  ") + "¥" + (period.CostUsd * exchange).ToString("0.00");
+            body.Controls.Add(LabelOf(title.ToUpperInvariant() + "  TOKEN", 13F, FontStyle.Bold, Theme.TextSoft), 0, 0);
+            body.Controls.Add(LabelOf(period == null ? "—" : FormatTokens(period.TotalTokens), 30F, FontStyle.Bold, Theme.Text), 0, 1);
+            body.Controls.Add(LabelOf(value, 15F, FontStyle.Regular, period != null && period.Estimated ? Theme.Warning : Theme.Accent), 0, 2); host.Controls.Add(body);
+            if (divider) host.Controls.Add(new Panel { Dock = DockStyle.Right, Width = 1, BackColor = Theme.Border }); return host;
+        }
+
+        private Control BuildSectionHeading() {
+            TableLayoutPanel row = new TableLayoutPanel { Dock = DockStyle.Fill, BackColor = Theme.Background, ColumnCount = 2, RowCount = 1, Margin = new Padding(0) };
+            row.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize)); row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            Label title = LabelOf("连接设置", 18F, FontStyle.Bold, Theme.Text); title.AutoSize = true; title.Padding = new Padding(0, 8, 20, 0);
+            Label note = LabelOf("连接信息只保存在当前 Windows 用户中", 14F, FontStyle.Regular, Theme.TextFaint); note.TextAlign = ContentAlignment.MiddleRight; note.Padding = new Padding(0, 8, 0, 0);
+            row.Controls.Add(title, 0, 0); row.Controls.Add(note, 1, 0); return row;
+        }
+
+        private Control BuildSettings() {
+            TableLayoutPanel fields = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 4, BackColor = Theme.Background, Margin = new Padding(0) };
             fields.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50)); fields.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-            fields.RowStyles.Add(new RowStyle(SizeType.Absolute, 76)); fields.RowStyles.Add(new RowStyle(SizeType.Absolute, 76));
-            fields.RowStyles.Add(new RowStyle(SizeType.Absolute, 76)); fields.RowStyles.Add(new RowStyle(SizeType.Absolute, 76));
-            fields.RowStyles.Add(new RowStyle(SizeType.Absolute, 46)); fields.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            form.Controls.Add(fields);
-            AddField(fields, "CW HTTPS 地址", hubUrl, 0, 0, 2);
-            AddField(fields, "设备连接 Key", key, 0, 1, 2);
-            AddField(fields, "设备名称", device, 0, 2, 2);
-            AddField(fields, "上报间隔（分钟）", interval, 0, 3, 1);
-            AddField(fields, "美元兑人民币", rate, 1, 3, 1);
-            startup.Text = "随 Windows 启动并在后台保持更新"; startup.AutoSize = true; startup.ForeColor = Color.FromArgb(59, 79, 71); startup.Margin = new Padding(2, 12, 0, 0);
-            fields.Controls.Add(startup, 0, 4); fields.SetColumnSpan(startup, 2);
-            Label privacy = TextLabel("隐私边界：只读取 ~/.codex/sessions 与 archived_sessions 中的 token_count 统计；不会上传提示词、回答、会话原文或任何项目文件。", 8.5f, FontStyle.Regular, Color.FromArgb(128, 144, 137), Point.Empty, Size.Empty);
-            privacy.Dock = DockStyle.Fill; privacy.Padding = new Padding(2, 12, 0, 0); privacy.AutoEllipsis = true;
-            fields.Controls.Add(privacy, 0, 5); fields.SetColumnSpan(privacy, 2);
-            root.Controls.Add(form, 0, 2);
+            fields.RowStyles.Add(new RowStyle(SizeType.Absolute, 62)); fields.RowStyles.Add(new RowStyle(SizeType.Absolute, 62)); fields.RowStyles.Add(new RowStyle(SizeType.Absolute, 62)); fields.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            AddField(fields, "CW HTTPS 地址", hubUrl, 0, 0, 2); AddField(fields, "设备连接 Key", key, 0, 1, 1); AddField(fields, "设备名称", device, 1, 1, 1);
+            AddField(fields, "上报间隔（分钟）", interval, 0, 2, 1); AddField(fields, "美元兑人民币", rate, 1, 2, 1);
+            TableLayoutPanel foot = new TableLayoutPanel { Dock = DockStyle.Fill, BackColor = Theme.Background, ColumnCount = 1, RowCount = 2, Margin = new Padding(0) };
+            foot.RowStyles.Add(new RowStyle(SizeType.Absolute, 38)); foot.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            startup.Text = "随 Windows 登录启动，并在后台保持更新"; startup.AutoSize = true; startup.ForeColor = Theme.TextSoft; startup.Margin = new Padding(0, 10, 0, 0);
+            Label privacy = LabelOf("仅扫描本机 Codex 会话文件中的 token_count 数字。", 14F, FontStyle.Regular, Theme.TextFaint); privacy.Padding = new Padding(0, 4, 0, 0);
+            foot.Controls.Add(startup, 0, 0); foot.Controls.Add(privacy, 0, 1); fields.Controls.Add(foot, 0, 3); fields.SetColumnSpan(foot, 2); return fields;
+        }
 
-            Panel actions = new Panel { Dock = DockStyle.Fill, BackColor = BackColor };
-            message.AutoSize = false; message.Location = new Point(0, 20); message.Size = new Size(430, 35); message.ForeColor = Color.FromArgb(166, 63, 63);
-            actions.Controls.Add(message);
-            Button cancel = ButtonOf("取消", false); cancel.Location = new Point(490, 14); cancel.Click += delegate { DialogResult = DialogResult.Cancel; Close(); };
-            Button save = ButtonOf("保存并连接", true); save.Location = new Point(592, 14); save.Click += Save;
-            actions.Controls.Add(cancel); actions.Controls.Add(save);
-            actions.Resize += delegate { save.Left = actions.ClientSize.Width - save.Width; cancel.Left = save.Left - cancel.Width - 10; };
-            root.Controls.Add(actions, 0, 3);
-
-            hubUrl.Text = config.HubUrl ?? "";
-            key.UseSystemPasswordChar = true; key.Text = config.IsReady() ? "••••••••••••" : "";
-            device.Text = config.DeviceId ?? "";
-            interval.Value = Math.Max(interval.Minimum, Math.Min(interval.Maximum, config.IntervalMinutes));
-            rate.Value = Math.Max(rate.Minimum, Math.Min(rate.Maximum, (decimal)config.UsdCnyRate));
-            startup.Checked = config.StartWithWindows;
+        private Control BuildActions() {
+            TableLayoutPanel actions = new TableLayoutPanel { Dock = DockStyle.Fill, BackColor = Theme.Background, ColumnCount = 2, RowCount = 1, Margin = new Padding(0) };
+            actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100)); actions.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            message.Dock = DockStyle.Fill; message.TextAlign = ContentAlignment.MiddleLeft; message.ForeColor = Color.FromArgb(166, 63, 63); message.AutoEllipsis = true;
+            FlowLayoutPanel buttons = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, Padding = new Padding(0, 8, 0, 0), BackColor = Theme.Background };
+            Button cancel = ButtonOf("取消", false); cancel.Click += delegate { DialogResult = DialogResult.Cancel; Close(); }; Button save = ButtonOf("保存并连接", true); save.Click += Save;
+            buttons.Controls.Add(cancel); buttons.Controls.Add(save); actions.Controls.Add(message, 0, 0); actions.Controls.Add(buttons, 1, 0); return actions;
         }
 
         private void Save(object sender, EventArgs e) {
             string url = hubUrl.Text.Trim().TrimEnd('/'); Uri uri;
             if (!Uri.TryCreate(url, UriKind.Absolute, out uri) || uri.Scheme != Uri.UriSchemeHttps) { message.Text = "请输入有效的 HTTPS CW 地址。"; return; }
-            string id = ReporterConfig.Slug(device.Text);
-            string nextKey = key.Text == "••••••••••••" ? original.Key : key.Text.Trim();
+            string id = ReporterConfig.Slug(device.Text); string nextKey = key.Text == "••••••••••••" ? original.Key : key.Text.Trim();
             if (String.IsNullOrWhiteSpace(nextKey)) { message.Text = "请输入设备连接 Key。"; return; }
             ReporterConfig value = new ReporterConfig { HubUrl = url, DeviceId = id, IntervalMinutes = (int)interval.Value, UsdCnyRate = (double)rate.Value, StartWithWindows = startup.Checked };
             value.Key = nextKey; Value = value; DialogResult = DialogResult.OK; Close();
         }
 
-        private static TextBox Input() { return new TextBox { BorderStyle = BorderStyle.FixedSingle, BackColor = Color.White, Font = new Font("Segoe UI", 10F), Margin = new Padding(2, 4, 12, 8) }; }
-        private static NumericUpDown NumberInput(decimal min, decimal max, decimal value, int decimals) { return new NumericUpDown { Minimum = min, Maximum = max, Value = value, DecimalPlaces = decimals, BorderStyle = BorderStyle.FixedSingle, BackColor = Color.White, Font = new Font("Segoe UI", 10F), Margin = new Padding(2, 4, 12, 8) }; }
-        private static void AddField(TableLayoutPanel panel, string title, Control control, int column, int row, int span) { Panel wrap = new Panel { Dock = DockStyle.Fill, BackColor = Color.Transparent }; Label label = TextLabel(title, 8.5f, FontStyle.Bold, Color.FromArgb(91, 109, 102), new Point(2, 0), new Size(300, 22)); control.Location = new Point(2, 24); control.Size = new Size(300, 34); control.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top; wrap.Controls.Add(label); wrap.Controls.Add(control); panel.Controls.Add(wrap, column, row); panel.SetColumnSpan(wrap, span); }
-        private static Label TextLabel(string text, float size, FontStyle style, Color color, Point location, Size bounds) { return new Label { Text = text, Font = new Font("Segoe UI", size, style), ForeColor = color, BackColor = Color.Transparent, Location = location, Size = bounds, AutoSize = bounds.IsEmpty }; }
-        private static Button ButtonOf(string text, bool primary) { Button button = new Button { Text = text, Size = new Size(primary ? 130 : 92, 42), FlatStyle = FlatStyle.Flat, Font = new Font("Segoe UI", 9.5f, FontStyle.Bold), Cursor = Cursors.Hand, BackColor = primary ? Color.FromArgb(8, 122, 88) : Color.White, ForeColor = primary ? Color.White : Color.FromArgb(59, 79, 71) }; button.FlatAppearance.BorderColor = primary ? Color.FromArgb(8, 122, 88) : Color.FromArgb(210, 224, 217); return button; }
-        private static string FormatTokens(long value) { if (value >= 1000000) return (value / 1000000d).ToString("0.##") + "M"; if (value >= 1000) return (value / 1000d).ToString("0.##") + "K"; return value.ToString(); }
+        private static Control Line() { return new Panel { Dock = DockStyle.Fill, BackColor = Theme.Border, Margin = new Padding(0) }; }
+        private static TextBox Input() { return new TextBox { Dock = DockStyle.Fill, BorderStyle = BorderStyle.None, BackColor = Theme.Background, ForeColor = Theme.Text, Font = FontOf(16F, FontStyle.Regular), Margin = new Padding(0, 3, 12, 0) }; }
+        private static NumericUpDown NumberInput(decimal min, decimal max, decimal value, int decimals) { return new NumericUpDown { Dock = DockStyle.Fill, Minimum = min, Maximum = max, Value = value, DecimalPlaces = decimals, BorderStyle = BorderStyle.None, BackColor = Theme.Background, ForeColor = Theme.Text, Font = FontOf(16F, FontStyle.Regular), Margin = new Padding(0, 3, 12, 0) }; }
+        private static void AddField(TableLayoutPanel panel, string title, Control control, int column, int row, int span) {
+            TableLayoutPanel field = new TableLayoutPanel { Dock = DockStyle.Fill, BackColor = Theme.Background, RowCount = 3, ColumnCount = 1, Margin = new Padding(column == 0 ? 0 : 12, 0, column == 0 && span == 1 ? 12 : 0, 7) };
+            field.RowStyles.Add(new RowStyle(SizeType.Absolute, 20)); field.RowStyles.Add(new RowStyle(SizeType.Percent, 100)); field.RowStyles.Add(new RowStyle(SizeType.Absolute, 1));
+            field.Controls.Add(LabelOf(title, 14F, FontStyle.Bold, Theme.TextSoft), 0, 0); field.Controls.Add(control, 0, 1); field.Controls.Add(Line(), 0, 2);
+            panel.Controls.Add(field, column, row); panel.SetColumnSpan(field, span);
+        }
+        private static Label LabelOf(string text, float size, FontStyle style, Color color) { return new Label { Text = text, Dock = DockStyle.Fill, AutoEllipsis = true, Font = FontOf(size, style), ForeColor = color, BackColor = Theme.Background, TextAlign = ContentAlignment.MiddleLeft, Margin = new Padding(0) }; }
+        private static Button ButtonOf(string text, bool primary) { Button button = new Button { Text = text, Size = new Size(primary ? 132 : 86, 38), Margin = new Padding(8, 0, 0, 0), FlatStyle = FlatStyle.Flat, Font = FontOf(15F, FontStyle.Bold), Cursor = Cursors.Hand, BackColor = primary ? Theme.Accent : Theme.Background, ForeColor = primary ? Color.White : Theme.TextSoft }; button.FlatAppearance.BorderColor = primary ? Theme.Accent : Theme.Border; button.FlatAppearance.MouseDownBackColor = primary ? Color.FromArgb(5, 103, 71) : Color.FromArgb(236, 241, 239); return button; }
+        private static Font FontOf(float pixels, FontStyle style) {
+            string key = pixels.ToString(System.Globalization.CultureInfo.InvariantCulture) + ":" + (int)style; Font font;
+            lock (FontCache) { if (!FontCache.TryGetValue(key, out font)) { font = new Font(UiFontName, pixels, style, GraphicsUnit.Pixel); FontCache[key] = font; } }
+            return font;
+        }
+        private static string FormatTokens(long value) { if (value >= 1000000000) return (value / 1000000000d).ToString("0.##") + "B"; if (value >= 1000000) return (value / 1000000d).ToString("0.##") + "M"; if (value >= 1000) return (value / 1000d).ToString("0.##") + "K"; return value.ToString(); }
     }
 }

@@ -1,5 +1,7 @@
 using System;
 using System.IO;
+using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Web.Script.Serialization;
@@ -8,7 +10,7 @@ using Microsoft.Win32;
 namespace CWUsageReporter {
     [Serializable]
     public sealed class ReporterConfig {
-        public const string AppVersion = "1.0.0";
+        public const string AppVersion = "1.0.2";
         public string HubUrl { get; set; }
         public string ProtectedKey { get; set; }
         public string DeviceId { get; set; }
@@ -33,6 +35,7 @@ namespace CWUsageReporter {
 
         public static readonly string DataDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CWUsageReporter");
         public static readonly string ConfigPath = Path.Combine(DataDirectory, "config.json");
+        public static readonly string StartupShortcutPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Startup), "CW Token 详情采集器.lnk");
         private static readonly byte[] Entropy = Encoding.UTF8.GetBytes("CWUsageReporter.Config.v1");
         private static readonly byte[] PluginEntropy = Encoding.UTF8.GetBytes("CWDevelopmentSync.Config.v1");
 
@@ -82,12 +85,36 @@ namespace CWUsageReporter {
             string temporary = ConfigPath + ".tmp";
             File.WriteAllText(temporary, new JavaScriptSerializer().Serialize(this), new UTF8Encoding(false));
             if (File.Exists(ConfigPath)) File.Replace(temporary, ConfigPath, null); else File.Move(temporary, ConfigPath);
+            ApplyStartupSetting();
+        }
+
+        public void ApplyStartupSetting() {
             using (RegistryKey key = Registry.CurrentUser.OpenSubKey("Software\\Microsoft\\Windows\\CurrentVersion\\Run", true)) {
                 if (key != null) {
                     key.DeleteValue("CodexWorkspaceCollector", false);
-                    if (StartWithWindows) key.SetValue("CWUsageReporter", "\"" + System.Windows.Forms.Application.ExecutablePath + "\"");
-                    else key.DeleteValue("CWUsageReporter", false);
+                    key.DeleteValue("CWUsageReporter", false);
                 }
+            }
+            if (StartWithWindows) WriteStartupShortcut(StartupShortcutPath, System.Windows.Forms.Application.ExecutablePath);
+            else if (File.Exists(StartupShortcutPath)) File.Delete(StartupShortcutPath);
+        }
+
+        private static void WriteStartupShortcut(string shortcutPath, string targetPath) {
+            Type shellType = Type.GetTypeFromProgID("WScript.Shell");
+            if (shellType == null) throw new InvalidOperationException("Windows 快捷方式服务不可用");
+            object shell = null;
+            object shortcut = null;
+            try {
+                shell = Activator.CreateInstance(shellType);
+                shortcut = shellType.InvokeMember("CreateShortcut", BindingFlags.InvokeMethod, null, shell, new object[] { shortcutPath });
+                Type shortcutType = shortcut.GetType();
+                shortcutType.InvokeMember("TargetPath", BindingFlags.SetProperty, null, shortcut, new object[] { targetPath });
+                shortcutType.InvokeMember("WorkingDirectory", BindingFlags.SetProperty, null, shortcut, new object[] { Path.GetDirectoryName(targetPath) });
+                shortcutType.InvokeMember("Description", BindingFlags.SetProperty, null, shortcut, new object[] { "CW Token 详情采集器" });
+                shortcutType.InvokeMember("Save", BindingFlags.InvokeMethod, null, shortcut, null);
+            } finally {
+                if (shortcut != null && Marshal.IsComObject(shortcut)) Marshal.FinalReleaseComObject(shortcut);
+                if (shell != null && Marshal.IsComObject(shell)) Marshal.FinalReleaseComObject(shell);
             }
         }
 

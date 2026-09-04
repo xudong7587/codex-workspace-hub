@@ -8,6 +8,9 @@ using System.Windows.Forms;
 
 namespace CWUsageReporter {
     internal static class Program {
+        internal static readonly Icon AppIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath) ?? SystemIcons.Application;
+        internal static readonly Bitmap AppBitmap = AppIcon.ToBitmap();
+
         [STAThread]
         private static void Main() {
             bool created;
@@ -28,20 +31,21 @@ namespace CWUsageReporter {
         private int running;
         private string lastStatus = "等待首次上报";
         private DateTime? lastSuccess;
-        private long todayTokens;
-        private double todayValueCny;
+        private UsageOverview usageOverview;
         private static readonly string LogPath = Path.Combine(ReporterConfig.DataDirectory, "reporter.log");
 
         public ReporterContext() {
             uiContext = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
             config = ReporterConfig.Load();
+            try { config.ApplyStartupSetting(); }
+            catch (Exception error) { Log("自启动配置失败：" + Short(error.Message, 120)); }
             ContextMenuStrip menu = new ContextMenuStrip();
             menu.Items.Add("立即刷新用量", null, delegate { QueueReport(true); });
             menu.Items.Add("连接设置", null, delegate { ShowSettings(); });
             menu.Items.Add("查看日志", null, delegate { OpenLog(); });
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add("退出", null, delegate { ExitThread(); });
-            tray = new NotifyIcon { Icon = SystemIcons.Application, Text = "CW Token 详情采集器", Visible = true, ContextMenuStrip = menu };
+            tray = new NotifyIcon { Icon = Program.AppIcon, Text = "CW Token 详情采集器", Visible = true, ContextMenuStrip = menu };
             tray.DoubleClick += delegate { ShowSettings(); };
             ResetTimer();
             if (config.IsReady()) QueueReport(false); else ShowSettings();
@@ -49,7 +53,7 @@ namespace CWUsageReporter {
         }
 
         private void ShowSettings() {
-            using (SettingsForm form = new SettingsForm(config, lastStatus, lastSuccess, todayTokens, todayValueCny)) {
+            using (SettingsForm form = new SettingsForm(config, lastStatus, lastSuccess, usageOverview)) {
                 if (form.ShowDialog() == DialogResult.OK) {
                     config = form.Value;
                     config.Save();
@@ -71,14 +75,18 @@ namespace CWUsageReporter {
                 try {
                     ReporterConfig snapshot = ReporterConfig.Load();
                     UsageSnapshot usage = UsageScanner.Scan(snapshot.UsdCnyRate);
-                    new HubClient(snapshot).Post("/api/collector/v1/usage", new Dictionary<string, object> { { "deviceId", snapshot.DeviceId }, { "snapshot", usage.Payload } });
-                    todayTokens = usage.Today.TotalTokens;
-                    todayValueCny = usage.Today.CostUsd * snapshot.UsdCnyRate;
+                    HubClient client = new HubClient(snapshot);
+                    client.Post("/api/collector/v1/usage", new Dictionary<string, object> { { "deviceId", snapshot.DeviceId }, { "snapshot", usage.Payload } });
+                    usageOverview = UsageOverview.FromSnapshot(usage, snapshot.UsdCnyRate);
+                    try { usageOverview = UsageOverview.FromStats(client.Get("/api/stats"), snapshot.UsdCnyRate) ?? usageOverview; }
+                    catch (Exception statsError) { Log("CW 汇总读取失败，暂时显示本机数据：" + Short(statsError.Message, 120)); }
                     lastSuccess = DateTime.Now;
                     lastStatus = "已连接，最近上报 " + lastSuccess.Value.ToString("HH:mm");
                     tray.Text = "CW Token 详情采集器 · 已更新";
-                    Log("上报完成：今日 " + todayTokens + " tokens，扫描 " + usage.FilesScanned + " 个会话文件");
-                    if (notify) Balloon("今日 " + FormatTokens(todayTokens) + " tokens · 约 ¥" + todayValueCny.ToString("0.00"), ToolTipIcon.Info);
+                    UsagePeriodView day = usageOverview.Day ?? new UsagePeriodView();
+                    double todayValueCny = day.CostUsd * usageOverview.UsdCnyRate;
+                    Log("上报完成：CW 今日 " + day.TotalTokens + " tokens，扫描 " + usage.FilesScanned + " 个会话文件");
+                    if (notify) Balloon("CW 今日 " + FormatTokens(day.TotalTokens) + " tokens · 约 ¥" + todayValueCny.ToString("0.00"), ToolTipIcon.Info);
                 } catch (Exception error) {
                     lastStatus = "连接失败：" + Short(error.Message, 90);
                     tray.Text = "CW Token 详情采集器 · 连接异常";

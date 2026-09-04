@@ -81,8 +81,10 @@ function bridgeUsage(usage) {
     if (!source || typeof source !== "object") continue;
     const totalTokens = Math.max(0, Number(source.totalTokens) || 0);
     const reportedCostUsd = Math.max(0, Number(source.costUsd) || 0);
-    const estimated = reportedCostUsd <= 0 && totalTokens > 0;
-    const costUsd = estimated ? totalTokens / 1_000_000 * 4 : reportedCostUsd;
+    const estimated = Boolean(source.estimated) || (reportedCostUsd <= 0 && totalTokens > 0);
+    const costUsd = reportedCostUsd > 0
+      ? reportedCostUsd
+      : estimated ? totalTokens / 1_000_000 * 4 : 0;
     periods[name] = { totalTokens, costUsd, estimated };
     hasData ||= totalTokens > 0 || costUsd > 0;
   }
@@ -91,6 +93,10 @@ function bridgeUsage(usage) {
   return {
     capturedAt: usage.capturedAt || null,
     source: usage.source || "cw",
+    mode: usage.mode || "collector",
+    collectorOnline: usage.collectorOnline !== false,
+    collectorLastSeenAt: usage.collectorLastSeenAt || usage.capturedAt || null,
+    estimatedSince: usage.estimatedSince || null,
     deviceCount: Math.max(0, Number(usage.deviceCount) || 0),
     usdCnyRate,
     estimated: Boolean(periods.total.estimated),
@@ -114,6 +120,12 @@ function loadAdminAssets(publicDir) {
       body: readFileSync(join(publicDir, "app.js")),
       contentType: "text/javascript; charset=utf-8",
       cacheControl: "no-store",
+    }],
+    ["/admin/downloads/CWQuotaBridge-android-v0.3.3-beta9.apk", {
+      body: readFileSync(join(publicDir, "downloads", "CWQuotaBridge-android-v0.3.3-beta9.apk")),
+      contentType: "application/vnd.android.package-archive",
+      cacheControl: "public, max-age=86400, immutable",
+      contentDisposition: "attachment; filename=\"CWQuotaBridge-android-v0.3.3-beta9.apk\"",
     }],
     ["/admin/downloads/CWQuotaBridge-android-v0.3.2-beta8.apk", {
       body: readFileSync(join(publicDir, "downloads", "CWQuotaBridge-android-v0.3.2-beta8.apk")),
@@ -282,7 +294,10 @@ export function createGatewayServer(input, maybeOptions = {}) {
         });
         return;
       }
-      const usage = bridgeUsage(usageStore?.get?.());
+      const rawUsage = usageStore?.getProjected
+        ? await usageStore.getProjected(stats)
+        : usageStore?.get?.();
+      const usage = bridgeUsage(rawUsage);
       writeJson(request, response, 200, usage ? { ...stats, usage } : stats);
     })().catch((error) => {
       logger?.error?.("Unhandled HTTP request error", { errorType: error?.name || "Error" });

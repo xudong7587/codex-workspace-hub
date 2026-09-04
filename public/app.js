@@ -564,12 +564,20 @@
     byId("usageDayValue").textContent = usageValue(day, rate, "—");
     byId("usageWeekValue").textContent = usageValue(week, rate, "—");
     byId("usageTotalValue").textContent = usageValue(total, rate, "未采集到详细数据");
-    byId("usageHistorySource").textContent = available
-      ? `${usage.deviceCount || 1} 台采集器 · ${formatDateTime(usage.capturedAt)}`
-      : "等待 PC Token 详情采集器";
-    byId("usageHistoryNote").textContent = available
-      ? "金额按各模型输入、缓存和输出 token 的 API 单价折算，并非订阅账单；没有可识别价格时按每百万 token 4 美元粗估。"
-      : "未采集到详细数据。如需精确估值，请安装 PC Token 详情采集器；CW 的剩余额度刷新不受影响。";
+    byId("usageHistorySource").textContent = !available
+      ? "等待 PC Token 详情采集器"
+      : usage.mode === "hybrid_estimate"
+        ? `采集器离线 · Codex 额度变化估算 · 基线 ${formatDateTime(usage.collectorLastSeenAt)}`
+        : usage.mode === "collector_baseline"
+          ? `采集器离线 · 保留最后精确值 · ${formatDateTime(usage.collectorLastSeenAt)}`
+          : `${usage.deviceCount || 1} 台采集器 · 精确数据 ${formatDateTime(usage.capturedAt)}`;
+    byId("usageHistoryNote").textContent = !available
+      ? "当前没有 Token 基线；安装 PC Token 详情采集器后，CW 才能建立可连续估算的起点。"
+      : usage.mode === "hybrid_estimate"
+        ? "离线增量根据 CW 直接读取的 Codex 额度百分比变化和最近在线校准率推算；采集器恢复后会自动以精确数据重新校准。"
+        : usage.mode === "collector_baseline"
+          ? "CW 暂时无法从 Codex 额度窗口推算新增 Token，当前保留最后一次精确数据，不会把旧数据冒充实时值。"
+          : "金额按各模型输入、缓存和输出 token 的 API 单价折算；没有可识别价格时按每百万 token 4 美元粗估。";
   }
 
   function usageValue(period, rate, emptyText) {

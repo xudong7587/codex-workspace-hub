@@ -136,7 +136,9 @@ export function createAdminApi(options = {}) {
     const state = providerManager.getAdminState();
     const enriched = {
       ...state,
-      usage: usageStore?.get?.() || null,
+      usage: usageStore?.getProjected
+        ? await usageStore.getProjected(providerManager.getStats?.())
+        : usageStore?.get?.() || null,
       sync: await snapshotStore?.getSummary?.() || null,
     };
     if (!credentialStore) return enriched;

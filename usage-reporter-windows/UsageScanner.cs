@@ -26,6 +26,9 @@ namespace CWUsageReporter {
     public sealed class UsageSnapshot {
         public Dictionary<string, object> Payload { get; set; }
         public UsageCounters Today { get; set; }
+        public UsageCounters Week { get; set; }
+        public UsageCounters Month { get; set; }
+        public UsageCounters Total { get; set; }
         public int FilesScanned { get; set; }
     }
 
@@ -82,7 +85,7 @@ namespace CWUsageReporter {
                 { "usdCnyRate", rate }, { "models", modelJson },
                 { "periods", new Dictionary<string, object> { { "day", day.Json() }, { "week", week.Json() }, { "month", month.Json() }, { "total", total.Json() } } }
             };
-            return new UsageSnapshot { Payload = payload, Today = day, FilesScanned = seen.Count };
+            return new UsageSnapshot { Payload = payload, Today = day, Week = week, Month = month, Total = total, FilesScanned = seen.Count };
         }
 
         private static FileSummary ScanFile(string file) {
