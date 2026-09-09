@@ -12,13 +12,14 @@ namespace CWUsageReporter {
         internal static readonly Bitmap AppBitmap = AppIcon.ToBitmap();
 
         [STAThread]
-        private static void Main() {
+        private static void Main(string[] args) {
             bool created;
             using (Mutex mutex = new Mutex(true, "Local\\CWUsageReporter.SingleInstance", out created)) {
                 if (!created) { MessageBox.Show("CW Token 详情采集器已经在运行。", "CW Token 详情采集器"); return; }
                 Application.EnableVisualStyles();
                 Application.SetCompatibleTextRenderingDefault(false);
-                Application.Run(new ReporterContext());
+                bool startInBackground = Array.Exists(args ?? new string[0], value => String.Equals(value, "--background", StringComparison.OrdinalIgnoreCase));
+                Application.Run(new ReporterContext(startInBackground));
             }
         }
     }
@@ -34,7 +35,7 @@ namespace CWUsageReporter {
         private UsageOverview usageOverview;
         private static readonly string LogPath = Path.Combine(ReporterConfig.DataDirectory, "reporter.log");
 
-        public ReporterContext() {
+        public ReporterContext(bool startInBackground) {
             uiContext = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
             config = ReporterConfig.Load();
             try { config.ApplyStartupSetting(); }
@@ -48,7 +49,16 @@ namespace CWUsageReporter {
             tray = new NotifyIcon { Icon = Program.AppIcon, Text = "CW Token 详情采集器", Visible = true, ContextMenuStrip = menu };
             tray.DoubleClick += delegate { ShowSettings(); };
             ResetTimer();
-            if (config.IsReady()) QueueReport(false); else ShowSettings();
+            if (config.IsReady()) {
+                QueueReport(false);
+                if (!startInBackground) ShowSettings();
+            } else if (!startInBackground) {
+                ShowSettings();
+            } else {
+                lastStatus = "尚未配置，请双击托盘图标完成连接";
+                tray.Text = "CW Token 详情采集器 · 尚未配置";
+                Log("后台启动时未找到可用配置，已保持托盘运行");
+            }
             Log("启动 v" + ReporterConfig.AppVersion);
         }
 

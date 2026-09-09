@@ -36,7 +36,9 @@ function normalizePeriod(value, name) {
     outputTokens: optionalCounter(input.outputTokens, `${name}.outputTokens`),
     reasoningTokens: optionalCounter(input.reasoningTokens, `${name}.reasoningTokens`),
     messageCount: optionalCounter(input.messageCount, `${name}.messageCount`),
+    unpricedTokens: optionalCounter(input.unpricedTokens, `${name}.unpricedTokens`),
     costUsd: finiteNumber(input.costUsd ?? 0, `${name}.costUsd`, { max: 10 ** 9 }),
+    estimated: Boolean(input.estimated) || optionalCounter(input.unpricedTokens, `${name}.unpricedTokens`) > 0,
   };
 }
 
@@ -45,7 +47,10 @@ function emptyPeriod() {
 }
 
 function addPeriod(target, value) {
-  for (const key of Object.keys(target)) target[key] += value[key] || 0;
+  for (const key of Object.keys(target)) {
+    if (key === "estimated") target.estimated ||= Boolean(value.estimated);
+    else target[key] += value[key] || 0;
+  }
 }
 
 export function normalizeUsageSnapshot(value, now = Date.now()) {

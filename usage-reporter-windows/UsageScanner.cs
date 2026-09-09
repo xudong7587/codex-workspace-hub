@@ -7,18 +7,20 @@ using System.Web.Script.Serialization;
 
 namespace CWUsageReporter {
     public sealed class UsageCounters {
-        public long TotalTokens, InputTokens, CacheReadTokens, OutputTokens, ReasoningTokens, MessageCount;
+        public long TotalTokens, InputTokens, CacheReadTokens, OutputTokens, ReasoningTokens, MessageCount, UnpricedTokens;
         public double CostUsd;
         public void Add(UsageCounters other) {
             if (other == null) return;
             TotalTokens += other.TotalTokens; InputTokens += other.InputTokens; CacheReadTokens += other.CacheReadTokens;
-            OutputTokens += other.OutputTokens; ReasoningTokens += other.ReasoningTokens; MessageCount += other.MessageCount; CostUsd += other.CostUsd;
+            OutputTokens += other.OutputTokens; ReasoningTokens += other.ReasoningTokens; MessageCount += other.MessageCount;
+            UnpricedTokens += other.UnpricedTokens; CostUsd += other.CostUsd;
         }
         public Dictionary<string, object> Json() {
             return new Dictionary<string, object> {
                 { "totalTokens", TotalTokens }, { "inputTokens", InputTokens }, { "cacheReadTokens", CacheReadTokens },
                 { "cacheWriteTokens", 0L }, { "outputTokens", OutputTokens }, { "reasoningTokens", ReasoningTokens },
-                { "messageCount", MessageCount }, { "costUsd", Math.Round(CostUsd, 8) }
+                { "messageCount", MessageCount }, { "unpricedTokens", UnpricedTokens },
+                { "costUsd", Math.Round(CostUsd + UnpricedTokens * 4d / 1000000d, 8) }, { "estimated", UnpricedTokens > 0 }
             };
         }
     }
@@ -45,6 +47,7 @@ namespace CWUsageReporter {
         private static readonly object CacheLock = new object();
         private static readonly Dictionary<string, FileSummary> Cache = new Dictionary<string, FileSummary>(StringComparer.OrdinalIgnoreCase);
         private static readonly Dictionary<string, Price> Prices = new Dictionary<string, Price>(StringComparer.OrdinalIgnoreCase) {
+            { "gpt-6-astra", new Price(10, 1, 50) },
             { "gpt-5.6-sol", new Price(4, .4, 20) }, { "gpt-5.6", new Price(4, .4, 20) },
             { "gpt-5.6-terra", new Price(2, .2, 12) }, { "gpt-5.6-luna", new Price(.2, .02, 1.2) },
             { "gpt-5.5", new Price(5, .5, 30) }, { "gpt-5.4", new Price(2.5, .25, 15) },
@@ -129,10 +132,10 @@ namespace CWUsageReporter {
             UsageCounters item = new UsageCounters { TotalTokens = total, InputTokens = input, CacheReadTokens = cached, OutputTokens = output, ReasoningTokens = reasoning, MessageCount = 1 };
             Price price; string normalized = NormalizeModel(model);
             if (Prices.TryGetValue(normalized, out price)) {
-                bool longContext = input > 272000 && (normalized.StartsWith("gpt-5.4") || normalized.StartsWith("gpt-5.5") || normalized.StartsWith("gpt-5.6"));
+                bool longContext = input > 272000 && (normalized.StartsWith("gpt-6") || normalized.StartsWith("gpt-5.4") || normalized.StartsWith("gpt-5.5") || normalized.StartsWith("gpt-5.6"));
                 double inputMultiplier = longContext ? 2 : 1, outputMultiplier = longContext ? 1.5 : 1;
                 item.CostUsd = ((input - cached) * price.Input * inputMultiplier + cached * price.Cached * inputMultiplier + output * price.Output * outputMultiplier) / 1000000.0;
-            }
+            } else item.UnpricedTokens = total;
             return item;
         }
 

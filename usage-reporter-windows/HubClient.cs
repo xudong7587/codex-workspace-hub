@@ -44,8 +44,8 @@ namespace CWUsageReporter {
 
         private static UsagePeriodView Period(UsageCounters value) {
             if (value == null) return new UsagePeriodView();
-            bool estimated = value.TotalTokens > 0 && value.CostUsd <= 0;
-            return new UsagePeriodView { TotalTokens = value.TotalTokens, CostUsd = estimated ? value.TotalTokens * 4d / 1000000d : value.CostUsd, Estimated = estimated };
+            bool estimated = value.UnpricedTokens > 0;
+            return new UsagePeriodView { TotalTokens = value.TotalTokens, CostUsd = value.CostUsd + value.UnpricedTokens * 4d / 1000000d, Estimated = estimated };
         }
         private static UsagePeriodView Period(Dictionary<string, object> periods, string key) {
             Dictionary<string, object> value = Dict(periods, key);

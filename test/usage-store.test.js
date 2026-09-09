@@ -41,6 +41,29 @@ test("usage snapshots preserve the lightweight reporter source", () => {
   assert.equal(snapshot.source, "cw-usage-reporter");
 });
 
+test("usage snapshots preserve partial price estimates without replacing known costs", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "cw-usage-pricing-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const store = new UsageStore({ dataDir: directory });
+  await store.initialize();
+  const estimatedPeriod = {
+    ...sample().periods.total,
+    totalTokens: 1_250_000,
+    unpricedTokens: 250_000,
+    costUsd: 4.25,
+    estimated: true,
+  };
+  await store.ingest("office-pc", {
+    ...sample(),
+    source: "cw-usage-reporter",
+    periods: { day: estimatedPeriod, week: estimatedPeriod, month: estimatedPeriod, total: estimatedPeriod },
+  });
+  const usage = store.get();
+  assert.equal(usage.periods.day.costUsd, 4.25);
+  assert.equal(usage.periods.day.unpricedTokens, 250_000);
+  assert.equal(usage.periods.day.estimated, true);
+});
+
 test("usage history persists atomically across restarts", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "cw-usage-"));
   t.after(() => rm(directory, { recursive: true, force: true }));

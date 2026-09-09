@@ -10,7 +10,7 @@ using Microsoft.Win32;
 namespace CWUsageReporter {
     [Serializable]
     public sealed class ReporterConfig {
-        public const string AppVersion = "1.0.2";
+        public const string AppVersion = "1.0.4";
         public string HubUrl { get; set; }
         public string ProtectedKey { get; set; }
         public string DeviceId { get; set; }
@@ -35,20 +35,45 @@ namespace CWUsageReporter {
 
         public static readonly string DataDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CWUsageReporter");
         public static readonly string ConfigPath = Path.Combine(DataDirectory, "config.json");
+        public static readonly string BackupConfigPath = Path.Combine(DataDirectory, "config.json.bak");
         public static readonly string StartupShortcutPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Startup), "CW Token 详情采集器.lnk");
         private static readonly byte[] Entropy = Encoding.UTF8.GetBytes("CWUsageReporter.Config.v1");
         private static readonly byte[] PluginEntropy = Encoding.UTF8.GetBytes("CWDevelopmentSync.Config.v1");
 
         public static ReporterConfig Load() {
+            ReporterConfig current = TryLoad(ConfigPath);
+            if (HasReadableSecret(current)) {
+                EnsureBackup();
+                return current;
+            }
+            ReporterConfig backup = TryLoad(BackupConfigPath);
+            if (HasReadableSecret(backup)) {
+                try { File.Copy(BackupConfigPath, ConfigPath, true); } catch { }
+                return backup;
+            }
+            if (current != null) return current;
             try {
-                if (File.Exists(ConfigPath)) {
-                    ReporterConfig current = new JavaScriptSerializer().Deserialize<ReporterConfig>(File.ReadAllText(ConfigPath, Encoding.UTF8));
-                    if (current != null) { current.Normalize(); return current; }
-                }
                 ReporterConfig migrated = TryPluginConfig();
                 if (migrated != null) { migrated.Save(); return migrated; }
             } catch { }
             return new ReporterConfig();
+        }
+
+        private static ReporterConfig TryLoad(string path) {
+            try {
+                if (!File.Exists(path)) return null;
+                ReporterConfig value = new JavaScriptSerializer().Deserialize<ReporterConfig>(File.ReadAllText(path, Encoding.UTF8));
+                if (value != null) value.Normalize();
+                return value;
+            } catch { return null; }
+        }
+
+        private static bool HasReadableSecret(ReporterConfig value) {
+            return value != null && !String.IsNullOrWhiteSpace(value.ProtectedKey) && !String.IsNullOrWhiteSpace(value.Key);
+        }
+
+        private static void EnsureBackup() {
+            try { if (!File.Exists(BackupConfigPath)) File.Copy(ConfigPath, BackupConfigPath, false); } catch { }
         }
 
         private static ReporterConfig TryPluginConfig() {
@@ -84,7 +109,12 @@ namespace CWUsageReporter {
             Directory.CreateDirectory(DataDirectory);
             string temporary = ConfigPath + ".tmp";
             File.WriteAllText(temporary, new JavaScriptSerializer().Serialize(this), new UTF8Encoding(false));
-            if (File.Exists(ConfigPath)) File.Replace(temporary, ConfigPath, null); else File.Move(temporary, ConfigPath);
+            if (File.Exists(ConfigPath)) {
+                File.Replace(temporary, ConfigPath, BackupConfigPath);
+            } else {
+                File.Move(temporary, ConfigPath);
+                File.Copy(ConfigPath, BackupConfigPath, true);
+            }
             ApplyStartupSetting();
         }
 
@@ -110,6 +140,7 @@ namespace CWUsageReporter {
                 Type shortcutType = shortcut.GetType();
                 shortcutType.InvokeMember("TargetPath", BindingFlags.SetProperty, null, shortcut, new object[] { targetPath });
                 shortcutType.InvokeMember("WorkingDirectory", BindingFlags.SetProperty, null, shortcut, new object[] { Path.GetDirectoryName(targetPath) });
+                shortcutType.InvokeMember("Arguments", BindingFlags.SetProperty, null, shortcut, new object[] { "--background" });
                 shortcutType.InvokeMember("Description", BindingFlags.SetProperty, null, shortcut, new object[] { "CW Token 详情采集器" });
                 shortcutType.InvokeMember("Save", BindingFlags.InvokeMethod, null, shortcut, null);
             } finally {
