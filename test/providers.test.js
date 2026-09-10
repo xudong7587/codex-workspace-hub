@@ -110,7 +110,11 @@ test("provider failures never include credentials or upstream response bodies", 
   assert.match(error.message, /HTTP 401/);
 });
 
-test("provider requests enforce their timeout through AbortSignal", async () => {
+test("provider requests enforce their timeout through AbortSignal", async (t) => {
+  // Unlike real fetch, this pending mock has no socket keeping Node 22 alive.
+  // Keep the test alive until the deliberately unref'ed production deadline fires.
+  const keepAlive = setTimeout(() => {}, 1000);
+  t.after(() => clearTimeout(keepAlive));
   await assert.rejects(
     collectOpenRouterQuota({
       apiKey: "key",
