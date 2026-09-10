@@ -85,10 +85,17 @@ namespace CWUsageReporter {
                 try {
                     ReporterConfig snapshot = ReporterConfig.Load();
                     UsageSnapshot usage = UsageScanner.Scan(snapshot.UsdCnyRate);
+                    var accountUsage = AccountUsageClient.Read();
+                    usage.Payload["accountUsage"] = accountUsage;
+                    if (Convert.ToString(accountUsage["status"]) != "available") Log("官方账号统计暂不可用；本地日志仍会上报");
                     HubClient client = new HubClient(snapshot);
                     client.Post("/api/collector/v1/usage", new Dictionary<string, object> { { "deviceId", snapshot.DeviceId }, { "snapshot", usage.Payload } });
                     usageOverview = UsageOverview.FromSnapshot(usage, snapshot.UsdCnyRate);
-                    try { usageOverview = UsageOverview.FromStats(client.Get("/api/stats"), snapshot.UsdCnyRate) ?? usageOverview; }
+                    try {
+                        var cwOverview = UsageOverview.FromStats(client.Get("/api/stats"), snapshot.UsdCnyRate);
+                        if (cwOverview != null && (cwOverview.OfficialMode || !usageOverview.OfficialMode)) usageOverview = cwOverview;
+                        else Log("CW 尚未返回新版账号统计，暂用本机官方读取结果；请升级 CW");
+                    }
                     catch (Exception statsError) { Log("CW 汇总读取失败，暂时显示本机数据：" + Short(statsError.Message, 120)); }
                     lastSuccess = DateTime.Now;
                     lastStatus = "已连接，最近上报 " + lastSuccess.Value.ToString("HH:mm");
@@ -96,7 +103,7 @@ namespace CWUsageReporter {
                     UsagePeriodView day = usageOverview.Day ?? new UsagePeriodView();
                     double todayValueCny = day.CostUsd * usageOverview.UsdCnyRate;
                     Log("上报完成：CW 今日 " + day.TotalTokens + " tokens，扫描 " + usage.FilesScanned + " 个会话文件");
-                    if (notify) Balloon("CW 今日 " + FormatTokens(day.TotalTokens) + " tokens · 约 ¥" + todayValueCny.ToString("0.00"), ToolTipIcon.Info);
+                    if (notify) Balloon((day.TokensAvailable ? "官方今日 " + FormatTokens(day.TotalTokens) + " tokens" : "官方今日暂未返回") + " · 本机日志折算约 ¥" + todayValueCny.ToString("0.00"), ToolTipIcon.Info);
                 } catch (Exception error) {
                     lastStatus = "连接失败：" + Short(error.Message, 90);
                     tray.Text = "CW Token 详情采集器 · 连接异常";

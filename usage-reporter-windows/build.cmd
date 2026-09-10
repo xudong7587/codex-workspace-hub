@@ -10,7 +10,7 @@ if errorlevel 1 goto :done
 dist\CWIconBuilder.exe assets\icon-source.png assets\cw-usage-reporter.png assets\cw-usage-reporter.ico
 if errorlevel 1 goto :done
 del /q dist\CWIconBuilder.exe
-"%CSC%" /nologo /target:winexe /optimize+ /win32manifest:app.manifest /win32icon:assets\cw-usage-reporter.ico /out:dist\CWUsageReporter.exe /reference:System.dll /reference:System.Core.dll /reference:System.Drawing.dll /reference:System.Security.dll /reference:System.Web.Extensions.dll /reference:System.Windows.Forms.dll Program.cs SettingsForm.cs ReporterConfig.cs HubClient.cs UsageScanner.cs
+"%CSC%" /nologo /target:winexe /optimize+ /win32manifest:app.manifest /win32icon:assets\cw-usage-reporter.ico /out:dist\CWUsageReporter.exe /reference:System.dll /reference:System.Core.dll /reference:System.Drawing.dll /reference:System.Security.dll /reference:System.Web.Extensions.dll /reference:System.Windows.Forms.dll Program.cs SettingsForm.cs ReporterConfig.cs HubClient.cs UsageScanner.cs AccountUsageClient.cs
 :done
 set BUILD_EXIT=%ERRORLEVEL%
 popd

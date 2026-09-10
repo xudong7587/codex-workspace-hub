@@ -7,10 +7,13 @@ using System.Text;
 using System.Web.Script.Serialization;
 using Microsoft.Win32;
 
+[assembly: AssemblyVersion(CWUsageReporter.ReporterConfig.AppVersion + ".0")]
+[assembly: AssemblyFileVersion(CWUsageReporter.ReporterConfig.AppVersion + ".0")]
+
 namespace CWUsageReporter {
     [Serializable]
     public sealed class ReporterConfig {
-        public const string AppVersion = "1.0.4";
+        public const string AppVersion = "1.0.5";
         public string HubUrl { get; set; }
         public string ProtectedKey { get; set; }
         public string DeviceId { get; set; }
