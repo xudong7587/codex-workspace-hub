@@ -1,6 +1,6 @@
 {
   "name": "codex-workspace-hub",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "private": true,
   "description": "An encrypted Codex development snapshot and quota hub for multiple devices.",
   "type": "module",
