@@ -70,6 +70,18 @@ function publicHealth(quotaService) {
 
 function bridgeUsage(usage) {
   if (!usage?.periods || typeof usage.periods !== "object") return null;
+  if (usage.accountUsage) {
+    return {
+      capturedAt: usage.accountUsage.capturedAt, source: "account/usage/read", mode: "official_account",
+      collectorOnline: usage.collectorOnline !== false, collectorLastSeenAt: usage.capturedAt,
+      deviceCount: usage.deviceCount, usdCnyRate: usage.usdCnyRate,
+      estimated: false, costAvailable: false, costScope: "unavailable",
+      accountUsage: usage.accountUsage, localDetails: usage.localDetails,
+      periods: Object.fromEntries(Object.entries(usage.accountUsage.periods).map(([name, period]) => [name, {
+        ...period, costUsd: null, estimated: false, costAvailable: false,
+      }])),
+    };
+  }
   const usdCnyRate = Number.isFinite(Number(usage.usdCnyRate)) && Number(usage.usdCnyRate) > 0
     ? Number(usage.usdCnyRate)
     : 7.2;
@@ -85,7 +97,10 @@ function bridgeUsage(usage) {
     const costUsd = reportedCostUsd > 0
       ? reportedCostUsd
       : estimated ? totalTokens / 1_000_000 * 4 : 0;
-    periods[name] = { totalTokens, costUsd, estimated };
+    periods[name] = { totalTokens, costUsd, estimated,
+      pricedCostUsd: source.pricedCostUsd ?? (estimated ? 0 : costUsd),
+      estimatedCostUsd: source.estimatedCostUsd ?? (estimated ? costUsd : 0),
+    };
     hasData ||= totalTokens > 0 || costUsd > 0;
   }
 

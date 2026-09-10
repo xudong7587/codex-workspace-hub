@@ -11,6 +11,10 @@ namespace CWUsageReporter {
         public long TotalTokens { get; set; }
         public double CostUsd { get; set; }
         public bool Estimated { get; set; }
+        public bool TokensAvailable { get; set; }
+        public bool Partial { get; set; }
+        public double PricedCostUsd { get; set; }
+        public double EstimatedCostUsd { get; set; }
     }
 
     internal sealed class UsageOverview {
@@ -20,6 +24,8 @@ namespace CWUsageReporter {
         public UsagePeriodView Total { get; set; }
         public double UsdCnyRate { get; set; }
         public int DeviceCount { get; set; }
+        public string SourceNote { get; set; }
+        public bool OfficialMode { get; set; }
 
         public static UsageOverview FromStats(Dictionary<string, object> stats, double fallbackRate) {
             Dictionary<string, object> usage = Dict(stats, "usage");
@@ -31,28 +37,87 @@ namespace CWUsageReporter {
                 Day = Period(periods, "day"), Week = Period(periods, "week"),
                 Month = Period(periods, "month"), Total = Period(periods, "total")
             };
+            var official = Dict(usage, "accountUsage");
+            var local = Dict(usage, "localDetails");
+            if (official != null) {
+                result.OfficialMode = true;
+                ApplyOfficial(result, Dict(official, "periods"));
+                var details = Dict(local, "periods");
+                ApplyCost(result.Day, details, "day"); ApplyCost(result.Week, details, "week");
+                ApplyCost(result.Month, details, "month"); ApplyCost(result.Total, details, "total");
+                result.UsdCnyRate = PositiveDouble(local, "usdCnyRate", fallbackRate);
+                result.SourceNote = "官方账号 Token · 日数据至 " + Text(official, "latestBucketDate") + (Bool(official, "stale") ? "（缓存）" : "") + " · 金额仅设备 " + Text(local, "deviceId");
+            } else result.SourceNote = "本地日志统计（非账号总量）";
             return result.Total == null ? null : result;
         }
 
         public static UsageOverview FromSnapshot(UsageSnapshot snapshot, double rate) {
-            return new UsageOverview {
+            var result = new UsageOverview {
                 UsdCnyRate = rate, DeviceCount = 1,
                 Day = Period(snapshot.Today), Week = Period(snapshot.Week),
-                Month = Period(snapshot.Month), Total = Period(snapshot.Total)
+                Month = Period(snapshot.Month), Total = Period(snapshot.Total), SourceNote = "本机日志（CW 官方统计暂不可用）"
             };
+            var official = Dict(snapshot.Payload, "accountUsage");
+            if (official != null) {
+                result.OfficialMode = true;
+                ApplyRawTokens(result.Day, official, "day"); ApplyRawTokens(result.Week, official, "week");
+                ApplyRawTokens(result.Month, official, "month"); ApplyRawTokens(result.Total, official, "total");
+                result.SourceNote = Text(official, "status") == "available" ? "官方账号 Token（本机读取）· 金额为本机日志"
+                    : "官方暂不可用 · 请检查本机 Codex 登录及版本";
+            }
+            return result;
+        }
+
+        private static void ApplyRawTokens(UsagePeriodView target, Dictionary<string, object> official, string name) {
+            target.TokensAvailable = false; target.TotalTokens = 0;
+            if (Text(official, "status") != "available") return;
+            if (name == "total") {
+                target.TokensAvailable = official.ContainsKey("lifetimeTokens") && official["lifetimeTokens"] != null;
+                target.TotalTokens = Long(official, "lifetimeTokens"); return;
+            }
+            DateTime today = DateTime.UtcNow.Date;
+            DateTime start = name == "week" ? today.AddDays(-(((int)today.DayOfWeek + 6) % 7))
+                : name == "month" ? new DateTime(today.Year, today.Month, 1) : today;
+            object raw;
+            var rows = official.TryGetValue("dailyUsageBuckets", out raw) ? raw as System.Collections.IEnumerable : null;
+            if (rows == null) return;
+            int days = 0;
+            foreach (object row in rows) {
+                var bucket = row as Dictionary<string, object>;
+                DateTime date;
+                if (bucket == null || !DateTime.TryParseExact(Text(bucket, "startDate"), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out date)
+                    || date < start || date > today || !bucket.ContainsKey("tokens") || bucket["tokens"] == null) continue;
+                target.TotalTokens += Long(bucket, "tokens"); days++;
+            }
+            target.TokensAvailable = days > 0;
+            target.Partial = days < (today - start).Days + 1;
+        }
+
+        private static void ApplyOfficial(UsageOverview result, Dictionary<string, object> periods) {
+            result.Day = Period(periods, "day"); result.Week = Period(periods, "week");
+            result.Month = Period(periods, "month"); result.Total = Period(periods, "total");
+        }
+        private static void ApplyCost(UsagePeriodView target, Dictionary<string, object> details, string key) {
+            var local = Period(details, key);
+            target.CostUsd = local.CostUsd; target.PricedCostUsd = local.PricedCostUsd;
+            target.EstimatedCostUsd = local.EstimatedCostUsd; target.Estimated = local.Estimated;
         }
 
         private static UsagePeriodView Period(UsageCounters value) {
             if (value == null) return new UsagePeriodView();
             bool estimated = value.UnpricedTokens > 0;
-            return new UsagePeriodView { TotalTokens = value.TotalTokens, CostUsd = value.CostUsd + value.UnpricedTokens * 4d / 1000000d, Estimated = estimated };
+            return new UsagePeriodView { TotalTokens = value.TotalTokens, TokensAvailable = true, CostUsd = value.CostUsd + value.UnpricedTokens * 4d / 1000000d, PricedCostUsd = value.CostUsd, EstimatedCostUsd = value.UnpricedTokens * 4d / 1000000d, Estimated = estimated };
         }
         private static UsagePeriodView Period(Dictionary<string, object> periods, string key) {
             Dictionary<string, object> value = Dict(periods, key);
             return value == null ? new UsagePeriodView() : new UsagePeriodView {
-                TotalTokens = Long(value, "totalTokens"), CostUsd = PositiveDouble(value, "costUsd", 0), Estimated = Bool(value, "estimated")
+                TotalTokens = Long(value, "totalTokens"), TokensAvailable = value.ContainsKey("totalTokens") && value["totalTokens"] != null,
+                Partial = Bool(value, "partial"), CostUsd = PositiveDouble(value, "costUsd", 0), Estimated = Bool(value, "estimated"),
+                PricedCostUsd = PositiveDouble(value, "pricedCostUsd", Bool(value, "estimated") ? 0 : PositiveDouble(value, "costUsd", 0)),
+                EstimatedCostUsd = PositiveDouble(value, "estimatedCostUsd", Bool(value, "estimated") ? PositiveDouble(value, "costUsd", 0) : 0)
             };
         }
+        private static string Text(Dictionary<string, object> value, string key) { object raw; return value != null && value.TryGetValue(key, out raw) && raw != null ? Convert.ToString(raw) : "—"; }
         private static Dictionary<string, object> Dict(Dictionary<string, object> value, string key) {
             object raw; return value != null && value.TryGetValue(key, out raw) ? raw as Dictionary<string, object> : null;
         }

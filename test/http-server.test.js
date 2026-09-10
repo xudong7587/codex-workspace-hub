@@ -191,6 +191,26 @@ test("GET /api/stats serves a fresh APK-compatible payload", async () => {
   });
 });
 
+test("GET /api/stats keeps official missing periods and costs null and exposes local detail separately", async () => {
+  const accountUsage = { accountCount: 1, capturedAt: "2026-09-10T09:59:00Z", periods: {
+    day: { totalTokens: null, partial: true }, week: { totalTokens: 300, partial: true },
+    month: { totalTokens: 400, partial: true }, total: { totalTokens: 7123456789, partial: false },
+  } };
+  const localDetails = { deviceId: "office-pc", periods: { total: { costUsd: 3, pricedCostUsd: 2, estimatedCostUsd: 1 } } };
+  const usageStore = { get: () => ({ periods: { total: { totalTokens: 6000 } }, accountUsage, localDetails, usdCnyRate: 7.2 }) };
+  await withGateway({ usageStore }, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/stats`, { headers: { Authorization: `Bearer ${SECRET}` } });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.usage.periods.total.totalTokens, 7123456789);
+    assert.equal(body.usage.periods.day.totalTokens, null);
+    assert.equal(body.usage.periods.total.costUsd, null);
+    assert.equal(body.usage.costAvailable, false);
+    assert.equal(body.usage.mode, "official_account");
+    assert.deepEqual(body.usage.localDetails, localDetails);
+  });
+});
+
 test("GET /api/stats exposes CW usage and applies the dashboard estimate", async () => {
   const usageStore = {
     get: () => ({

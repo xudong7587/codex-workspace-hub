@@ -20,7 +20,9 @@ namespace CWUsageReporter {
                 { "totalTokens", TotalTokens }, { "inputTokens", InputTokens }, { "cacheReadTokens", CacheReadTokens },
                 { "cacheWriteTokens", 0L }, { "outputTokens", OutputTokens }, { "reasoningTokens", ReasoningTokens },
                 { "messageCount", MessageCount }, { "unpricedTokens", UnpricedTokens },
-                { "costUsd", Math.Round(CostUsd + UnpricedTokens * 4d / 1000000d, 8) }, { "estimated", UnpricedTokens > 0 }
+                { "costUsd", Math.Round(CostUsd + UnpricedTokens * 4d / 1000000d, 8) },
+                { "pricedCostUsd", Math.Round(CostUsd, 8) }, { "estimatedCostUsd", Math.Round(UnpricedTokens * 4d / 1000000d, 8) },
+                { "estimated", UnpricedTokens > 0 }
             };
         }
     }
@@ -55,14 +57,17 @@ namespace CWUsageReporter {
             { "gpt-5.2", new Price(1.75, .175, 14) }, { "codex-mini-latest", new Price(1.5, .375, 6) }
         };
 
-        public static UsageSnapshot Scan(double usdCnyRate) { lock (CacheLock) return ScanLocked(usdCnyRate); }
+        public static UsageSnapshot Scan(double usdCnyRate) {
+            string codex = Environment.GetEnvironmentVariable("CODEX_HOME");
+            if (String.IsNullOrWhiteSpace(codex)) codex = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".codex");
+            return ScanAt(codex, DateTime.Now, usdCnyRate);
+        }
+        internal static UsageSnapshot ScanAt(string codex, DateTime now, double rate) { lock (CacheLock) return ScanLocked(rate, codex, now); }
 
-        private static UsageSnapshot ScanLocked(double rate) {
-            DateTime now = DateTime.Now;
+        private static UsageSnapshot ScanLocked(double rate, string codex, DateTime now) {
             UsageCounters day = new UsageCounters(), week = new UsageCounters(), month = new UsageCounters(), total = new UsageCounters();
             Dictionary<string, UsageCounters> models = new Dictionary<string, UsageCounters>(StringComparer.OrdinalIgnoreCase);
             HashSet<string> seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            string codex = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".codex");
             foreach (string folder in new[] { Path.Combine(codex, "sessions"), Path.Combine(codex, "archived_sessions") }) {
                 if (!Directory.Exists(folder)) continue;
                 foreach (string file in Directory.EnumerateFiles(folder, "*.jsonl", SearchOption.AllDirectories)) {
@@ -83,7 +88,7 @@ namespace CWUsageReporter {
             Dictionary<string, object> modelJson = new Dictionary<string, object>();
             foreach (KeyValuePair<string, UsageCounters> pair in models) modelJson[pair.Key] = pair.Value.Json();
             var payload = new Dictionary<string, object> {
-                { "source", "cw-usage-reporter" }, { "capturedAt", DateTime.UtcNow.ToString("o") },
+                { "source", "cw-usage-reporter" }, { "capturedAt", DateTime.UtcNow.ToString("o") }, { "reporterVersion", ReporterConfig.AppVersion },
                 { "dayKey", now.ToString("yyyy-MM-dd") }, { "weekKey", IsoWeekKey(now) }, { "monthKey", now.ToString("yyyy-MM") },
                 { "usdCnyRate", rate }, { "models", modelJson },
                 { "periods", new Dictionary<string, object> { { "day", day.Json() }, { "week", week.Json() }, { "month", month.Json() }, { "total", total.Json() } } }
@@ -95,6 +100,7 @@ namespace CWUsageReporter {
             FileSummary summary = new FileSummary();
             JavaScriptSerializer json = new JavaScriptSerializer();
             string model = "unknown";
+            string previousUsage = null;
             try {
                 foreach (string line in ReadLinesShared(file)) {
                     if (!line.Contains("\"token_count\"") && !line.Contains("\"turn_context\"")) continue;
@@ -104,8 +110,15 @@ namespace CWUsageReporter {
                     if (payload == null) continue;
                     if (Text(root, "type") == "turn_context") { string next = Text(payload, "model"); if (!String.IsNullOrWhiteSpace(next)) model = NormalizeModel(next); continue; }
                     if (Text(root, "type") != "event_msg" || Text(payload, "type") != "token_count") continue;
-                    Dictionary<string, object> usage = Dict(Dict(payload, "info"), "last_token_usage");
+                    Dictionary<string, object> info = Dict(payload, "info");
+                    Dictionary<string, object> usage = Dict(info, "last_token_usage");
                     if (usage == null) continue;
+                    Dictionary<string, object> cumulative = Dict(info, "total_token_usage");
+                    // Quota notifications can repeat the previous usage unchanged. Only skip
+                    // adjacent identical cumulative AND last counters, never a reset or a new total.
+                    string fingerprint = cumulative == null ? null : UsageSignature(cumulative) + "/" + UsageSignature(usage);
+                    if (fingerprint != null && fingerprint == previousUsage) continue;
+                    previousUsage = fingerprint;
                     UsageCounters item = Counters(usage, model);
                     DateTime timestamp;
                     if (!DateTime.TryParse(Text(root, "timestamp"), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out timestamp)) timestamp = File.GetLastWriteTimeUtc(file);
@@ -140,6 +153,9 @@ namespace CWUsageReporter {
         }
 
         private static void AddKey(UsageCounters target, Dictionary<string, UsageCounters> map, string key) { UsageCounters value; if (map.TryGetValue(key, out value)) target.Add(value); }
+        private static string UsageSignature(Dictionary<string, object> usage) {
+            return Long(usage, "input_tokens") + ":" + Long(usage, "cached_input_tokens") + ":" + Long(usage, "output_tokens") + ":" + Long(usage, "reasoning_output_tokens") + ":" + Long(usage, "total_tokens");
+        }
         private static void AddMap(Dictionary<string, UsageCounters> map, string key, UsageCounters value) { UsageCounters target; if (!map.TryGetValue(key, out target)) { target = new UsageCounters(); map[key] = target; } target.Add(value); }
         private static Dictionary<string, object> Dict(Dictionary<string, object> value, string key) { object raw; return value != null && value.TryGetValue(key, out raw) ? raw as Dictionary<string, object> : null; }
         private static string Text(Dictionary<string, object> value, string key) { object raw; return value != null && value.TryGetValue(key, out raw) && raw != null ? Convert.ToString(raw, CultureInfo.InvariantCulture) : ""; }

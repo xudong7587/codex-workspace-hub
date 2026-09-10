@@ -93,9 +93,17 @@
 
 `POST /api/collector/v1/usage` 是与项目快照协议独立的兼容端点。Windows Token 详情采集器使用设备连接 Key 鉴权，提交 `deviceId` 与已经在本地汇总的 `snapshot`。服务端按设备 ID 覆盖保存最新快照，多台 PC 汇总时不会因同一设备重复上报而累加。
 
-快照只包含日、周、月、累计计数、模型汇总、汇率和估算金额，不包含会话正文或项目内容。管理页优先显示采集器的分模型估值；已识别模型按各自输入、缓存输入和输出单价计算，只有无法识别模型对应的 `unpricedTokens` 才按每百万 Token 4 美元补估。只要周期内含未知模型，该周期就标记为 `estimated: true`。
+v1.0.5 新增 `snapshot.accountUsage`：`status` 为 `available` 或 `unavailable`，`accountKey` 为规范化 ChatGPT 邮箱经固定域前缀 `cw-chatgpt-usage-v1:` 加 SHA-256 的 64 位十六进制标识；成功结果包含 `capturedAt`、可空 `lifetimeTokens` 和可空 `dailyUsageBuckets: [{startDate,tokens}]`。只传输这些白名单字段，不传邮箱、凭据、会话正文或项目内容。`snapshot.periods` 和 `models` 继续保留本机日志数据，新增 `pricedCostUsd`、`estimatedCostUsd` 分别表示内置价格折算与未知价格估算，`costUsd` 保持两者之和。
 
-采集器最后上报时间在 15 分钟内时，`/api/stats`、管理页、手机和手表均采用采集器精确快照。采集器离线后，CW 保留最后精确快照作为基线，并利用 Codex 账号周额度窗口的 `usedPercent` 变化及在线阶段校准出的 Token/百分比关系推算新增用量；返回值以 `mode: hybrid_estimate`、`collectorOnline: false` 和周期级 `estimated: true` 明确标记。额度窗口重置时从新窗口当前百分比继续累计，采集器恢复后立即以新精确快照替换估算并重新校准。若没有历史基线或无法形成校准率，CW 只保留最后精确值，不虚构新增 Token。
+服务端仍以 schemaVersion 2 兼容读写历史设备快照。官方统计按 `accountKey` 分组，每个账号采用最近成功的读取结果，不把设备快照相加，也不取历史最大值。相同账号的失败上报可保留该设备之前的成功结果并标记 `stale`；账号改变或身份缺失时不复用。过时的设备上报不会覆盖新快照。
+
+管理接口中的 `accountUsage.periods` 为官方 Token，`totalTokens` 可为 `null`，`partial` 表示只包含部分返回数据；今日、周一开始的本周、当月以 UTC 当前日期匹配官方日期桶，缺失日期不会补零。`latestBucketDate` 为已返回日期中的最近日期，`capturedAt` 为参与汇总账号中最早的读取时间。没有账号身份的旧设备不混入官方总量，并通过 `unidentifiedDeviceCount` 标明。
+
+`localDetails` 是最近上报设备的 `{deviceId,capturedAt,usdCnyRate,periods}`，用于独立显示本机日志费用；多设备费用不相加，避免拷贝的会话历史重复计价。官方接口不提供账单或完整模型费用。未知价格部分按每百万 Token 4 美元估算。
+
+`/api/stats` 在新模式下返回 `mode: official_account`，主 `periods` 使用官方 Token，并将 `costUsd` 置为 `null`、`costAvailable` 置为 `false`。`localDetails` 单独保留费用明细，客户端不能将 `null` 转为零或据此给整个账号按默认单价计费。当前随包 APK 未新增此状态的展示支持；以管理页和新版 Windows 采集器显示为准。
+
+新账号模式不使用额度百分比补估 Token。超过 15 分钟未成功读取时保留官方快照并标明缓存时间，`collectorOnline` 只描述设备上报是否在线，与官方日数据是否齐全无关。没有任何新版账号上报的旧设备集仍兼容原 `collector`、`collector_baseline`、`hybrid_estimate` 模式；这些只是本地日志或离线估算，不是官方账号总量。
 
 ## 旧接口边界
 

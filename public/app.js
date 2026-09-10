@@ -553,6 +553,20 @@
   }
 
   function renderUsageHistory(usage) {
+    if (usage?.accountUsage) {
+      const official = usage.accountUsage;
+      const local = usage.localDetails;
+      for (const [name, id] of [["day", "Day"], ["week", "Week"], ["total", "Total"]]) {
+        const period = official.periods[name];
+        byId(`usage${id}Tokens`).textContent = period?.totalTokens == null ? "官方暂未返回"
+          : `${formatTokenCount(period.totalTokens)} tokens${period.partial ? "（已返回部分）" : ""}`;
+        byId(`usage${id}Value`).textContent = local
+          ? `本机明细：${usageValue(local.periods[name], local.usdCnyRate, "无金额明细")}` : "官方不提供金额明细";
+      }
+      byId("usageHistorySource").textContent = `官方账号统计 · ${official.accountCount} 个账号（跨设备去重） · ${official.stale ? "保留上次结果 · " : ""}读取 ${formatDateTime(official.capturedAt)}`;
+      byId("usageHistoryNote").textContent = `官方每日数据最近日期：${official.latestBucketDate || "尚未返回"}；周期按官方日期、UTC 当日划分，缺失日期不当作零。金额仅来自设备 ${local?.deviceId || "—"} 的本地日志，不代表账号完整费用或实际账单；多台设备的日志金额不相加。${official.unidentifiedDeviceCount ? `另有 ${official.unidentifiedDeviceCount} 台设备尚无账号身份，未混入官方总量。` : ""}`;
+      return;
+    }
     const available = usage && typeof usage === "object" && usage.periods;
     const rate = available ? Number(usage.usdCnyRate) : 7.2;
     const day = available ? usage.periods.day : null;
@@ -569,8 +583,8 @@
       : usage.mode === "hybrid_estimate"
         ? `采集器离线 · Codex 额度变化估算 · 基线 ${formatDateTime(usage.collectorLastSeenAt)}`
         : usage.mode === "collector_baseline"
-          ? `采集器离线 · 保留最后精确值 · ${formatDateTime(usage.collectorLastSeenAt)}`
-          : `${usage.deviceCount || 1} 台采集器 · 精确数据 ${formatDateTime(usage.capturedAt)}`;
+          ? `旧版采集器离线 · 本地日志快照 · ${formatDateTime(usage.collectorLastSeenAt)}`
+          : `${usage.deviceCount || 1} 台旧版采集器 · 本地日志（非账号总量） ${formatDateTime(usage.capturedAt)}`;
     byId("usageHistoryNote").textContent = !available
       ? "当前没有 Token 基线；安装 PC Token 详情采集器后，CW 才能建立可连续估算的起点。"
       : usage.mode === "hybrid_estimate"
@@ -582,6 +596,9 @@
 
   function usageValue(period, rate, emptyText) {
     if (!period) return emptyText;
+    if (period.pricedCostUsd != null || period.estimatedCostUsd != null) {
+      return `API 折算 ${formatCny(Number(period.pricedCostUsd || 0) * rate)}${Number(period.estimatedCostUsd) > 0 ? ` + 未知价格估算 ${formatCny(Number(period.estimatedCostUsd) * rate)}` : ""}`;
+    }
     if (Number(period.costUsd) > 0) return `API 等价价值 ${formatCny(Number(period.costUsd) * rate)}`;
     if (Number(period.totalTokens) > 0) {
       const estimatedUsd = Number(period.totalTokens) / 1_000_000 * 4;

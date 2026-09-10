@@ -7,7 +7,7 @@
 
 CW 由一个运行在 NAS 上的 Docker 服务和几个按需安装的客户端组成。各部分彼此独立：只想看额度，不必安装项目同步插件；只想同步项目，也不必安装手机 APK。
 
-当前发布版本为 CW `v1.0.3`。配套的 Windows Token 详情采集器版本为 `v1.0.4`，Android 额度桥接版本为 `v0.3.3-beta9`。
+当前发布版本为 CW `v1.0.5`，Windows Token 详情采集器同为 `v1.0.5`。Android 额度桥接仍为 `v0.3.3-beta9`。
 
 ## 我应该安装什么
 
@@ -194,11 +194,17 @@ Codex 会列出准备上传和排除的文件。确认列表无误后再说：
 
 [下载最新版 CWUsageReporter.exe](https://github.com/xudong7587/codex-workspace-hub/releases/latest/download/CWUsageReporter.exe)
 
-这是一个独立、轻量的托盘程序，只读取当前 Windows 用户的 `.codex/sessions` 和 `.codex/archived_sessions` 中的 `token_count`，每 5 分钟向 CW 上报日、周、月和累计汇总。
+这是一个独立的托盘程序，每 5 分钟通过本机 Codex app-server 的 [`account/usage/read`](https://learn.chatgpt.com/zh-Hans/docs/app-server) 读取官方账号 Token 活动，同时扫描 `CODEX_HOME`（默认 `.codex`）中的会话用量数字，提供本机模型和金额明细。需要本机 Codex 已登录 ChatGPT，且安装的 Codex 支持该接口。
 
 首次启动只需填写 CW HTTPS 根地址、设备连接 Key 和设备名称。地址和设备名保存在当前 Windows 用户目录，Key 使用 DPAPI 加密；配置还会保留一份本地备份。启用开机自启后，采集器只在托盘后台运行，不会每次弹出设置窗口。它不会上传提示词、回答或会话原文，也没有项目同步和 NAS 文件管理能力。
 
-有采集器时，CW 按模型分别计算 API 等价价值。`gpt-6-astra` 使用[官方输入、缓存输入和输出价格](https://developers.openai.com/api/docs/models/gpt-6-astra)，并计入长上下文倍率；无法识别的模型只对其自身 Token 按每百万 Token 4 美元补估，不会覆盖同一周期内已经算出的准确金额。含未知模型的周期会标记为“估算”。采集器超过 15 分钟没有上报后，CW 会保留最后一次快照为基线，结合 Codex 账号额度百分比的后续变化推算离线增量。采集器恢复后自动重新校准，不重复累计。
+CW 按账号去重官方统计。同一 ChatGPT 账号在两台电脑上报时，只采用最近一次成功读取的结果；累计值直接使用官方返回值，不加本地日志或额度推算增量。账号身份以规范化邮箱的 SHA-256 标识传输，不上传邮箱和登录凭据。切换账号后，不会沿用前一个账号的数字。
+
+官方日数据可能延迟或缺失。缺失的今日数据显示“官方暂未返回”；周、月只累计已返回日期并标明部分数据，日期边界采用 UTC。接口失败且仍能确认同一账号时，保留上次成功值及读取时间；采集器离线后也只显示缓存，不补估官方 Token。
+
+官方接口不提供模型费用明细。金额单独展示最近上报设备的本机日志：已识别模型按内置输入、缓存和输出单价折算，未知价格部分按每百万 Token 4 美元估算，两部分分别显示。该金额不代表账号完整费用或 ChatGPT 实际账单。为避免复制或同步过的日志重复计价，多台设备的日志金额不相加；页面注明当前明细来自哪台设备。
+
+升级时先更新 CW Docker，再替换各 PC 的采集器。旧版日志历史仍可读取，但不会混入已取得的官方账号总量。旧版采集器单独运行时仍沿用原来的日志/离线估算协议，页面会注明旧版数据来源。
 
 ## 手机与手表
 
@@ -209,7 +215,7 @@ Codex 会列出准备上传和排除的文件。确认列表无误后再说：
 - CW 根地址，例如 `https://cw.example.com`
 - 管理页面“移动端数据中心”中的设备连接 Key
 
-不要把管理密码填进 APK。Codex 可选择 CW Hub 或设备码手机直连，两条渠道互斥，宠物卡片只展示当前选中的 Codex 渠道。CW 渠道读取后端返回的 Token 与金额；手机直连固定按每百万 Token 4 美元估算。连接成功后，手机会沿现有蓝牙健康通道发送额度给兼容手表。
+不要把管理密码填进 APK。Codex 可选择 CW Hub 或设备码手机直连，两条渠道互斥，宠物卡片只展示当前选中的 Codex 渠道。CW 的新账号统计协议返回官方 Token；缺失周期及官方费用为 `null`，本机费用另置于 `localDetails`。本次没有更新 APK，旧客户端可能不识别这些状态，请以 CW 管理页或新版 Windows 采集器为准。手机直连仍按每百万 Token 4 美元估算。额度和蓝牙桥接协议不变。
 
 当前链路面向 vivo WATCH GT、vivo WATCH GT 2 及对应的 iQOO 版本。第三方安装链路从早期 VWatch / Token Monitor 兼容方式演进到 [OrbitV](https://orbitv.top/) 和它的[轻腕市场](https://qingwear.top/)，额度表盘名称为 `Clawd_on_Vwatch`。早期 vivo WATCH 1/2 与 WATCH GT 系列不是同一平台，不在这条链路的支持范围内。
 
@@ -253,7 +259,7 @@ codex plugin add cw-development-sync@codex-workspace-hub
 
 ### 为什么页面有额度，却没有今日或本周 Token 价值？
 
-CW 的设备码授权能读取账户剩余额度，但无法直接取得 PC 本地的完整 Token 历史。先安装一次 `CWUsageReporter.exe` 建立精确基线；采集器在线时持续上报准确数据，离线后 CW 会根据额度变化延续估算。没有历史基线时，CW 不会用额度百分比虚构 Token 数量。
+额度窗口与 Token 活动是不同接口。安装新版 `CWUsageReporter.exe` 并在本机登录 ChatGPT 后，采集器会读取官方 Token 活动。官方未返回当天数据时，今日栏会暂缺；读取失败或本机 Codex 版本不支持接口时，也不会用日志数字冒充账号总量。金额只覆盖页面注明的设备日志。
 
 ### 为什么 APK 或插件提示 401/403？
 

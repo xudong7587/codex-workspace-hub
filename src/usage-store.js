@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { mkdir, open, readFile, rename, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { normalizeAccountUsage, aggregateAccountUsage } from "./account-usage.js";
 
 const SCHEMA_VERSION = 2;
 const MAX_FILE_BYTES = 2 * 1024 * 1024;
@@ -28,6 +29,9 @@ function cleanKey(value, fallback, pattern) {
 
 function normalizePeriod(value, name) {
   const input = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  const costUsd = finiteNumber(input.costUsd ?? 0, `${name}.costUsd`, { max: 10 ** 9 });
+  const unpricedTokens = optionalCounter(input.unpricedTokens, `${name}.unpricedTokens`);
+  const estimatedCostUsd = finiteNumber(input.estimatedCostUsd ?? (input.estimated && !unpricedTokens ? costUsd : Math.min(costUsd, unpricedTokens * 4 / 1_000_000)), `${name}.estimatedCostUsd`, { max: 10 ** 9 });
   return {
     totalTokens: optionalCounter(input.totalTokens, `${name}.totalTokens`),
     inputTokens: optionalCounter(input.inputTokens, `${name}.inputTokens`),
@@ -37,7 +41,9 @@ function normalizePeriod(value, name) {
     reasoningTokens: optionalCounter(input.reasoningTokens, `${name}.reasoningTokens`),
     messageCount: optionalCounter(input.messageCount, `${name}.messageCount`),
     unpricedTokens: optionalCounter(input.unpricedTokens, `${name}.unpricedTokens`),
-    costUsd: finiteNumber(input.costUsd ?? 0, `${name}.costUsd`, { max: 10 ** 9 }),
+    costUsd,
+    pricedCostUsd: finiteNumber(input.pricedCostUsd ?? Math.max(0, costUsd - estimatedCostUsd), `${name}.pricedCostUsd`, { max: 10 ** 9 }),
+    estimatedCostUsd,
     estimated: Boolean(input.estimated) || optionalCounter(input.unpricedTokens, `${name}.unpricedTokens`) > 0,
   };
 }
@@ -75,6 +81,7 @@ export function normalizeUsageSnapshot(value, now = Date.now()) {
     weekKey: cleanKey(input.weekKey, input.dayKey || dayFallback, /^\d{4}-W\d{2}$/),
     monthKey: cleanKey(input.monthKey, monthFallback, /^\d{4}-\d{2}$/),
     usdCnyRate: finiteNumber(input.usdCnyRate ?? 7.2, "usdCnyRate", { min: 1, max: 20 }),
+    accountUsage: normalizeAccountUsage(input.accountUsage),
     periods,
     models: input.models && typeof input.models === "object" && !Array.isArray(input.models)
       ? structuredClone(input.models)
@@ -88,7 +95,7 @@ function normalizeDeviceId(value) {
   return text;
 }
 
-function aggregateDevices(devices) {
+function aggregateDevices(devices, now = Date.now()) {
   const values = Object.entries(devices || {}).map(([deviceId, snapshot]) => ({
     deviceId,
     ...normalizeUsageSnapshot(snapshot),
@@ -113,6 +120,8 @@ function aggregateDevices(devices) {
   return {
     schemaVersion: SCHEMA_VERSION,
     source: values.every((item) => item.source === values[0].source) ? values[0].source : "mixed",
+    accountUsage: values.some((item) => item.accountUsage) ? aggregateAccountUsage(values, now) : null,
+    localDetails: { deviceId: latest.deviceId, capturedAt: latest.capturedAt, usdCnyRate: latest.usdCnyRate, periods: latest.periods },
     capturedAt: latest.capturedAt,
     importedAt: new Date().toISOString(),
     dayKey: latest.dayKey,
@@ -171,12 +180,21 @@ function addProjectedUsage(period, tokenDelta, costDelta) {
   if (!period || tokenDelta <= 0) return;
   period.totalTokens = Math.round((Number(period.totalTokens) || 0) + tokenDelta);
   period.costUsd = Math.max(0, Number(period.costUsd) || 0) + costDelta;
+  period.estimatedCostUsd = Math.max(0, Number(period.estimatedCostUsd) || 0) + costDelta;
   period.estimated = true;
 }
 
 export function projectUsageSnapshot(exactUsage, quotaStats, previousState, now = Date.now()) {
   if (!exactUsage?.periods?.total) return { usage: exactUsage || null, state: previousState || null };
   const usage = structuredClone(exactUsage);
+  if (usage.accountUsage) {
+    usage.mode = "official_account";
+    usage.collectorOnline = now - Date.parse(usage.capturedAt) <= COLLECTOR_ONLINE_MS;
+    usage.collectorLastSeenAt = usage.capturedAt;
+    usage.accountUsage.stale ||= !usage.collectorOnline;
+    usage.estimated = false;
+    return { usage, state: null };
+  }
   const capturedAt = Date.parse(usage.capturedAt || "");
   const collectorOnline = Number.isFinite(capturedAt) && Math.max(0, now - capturedAt) <= COLLECTOR_ONLINE_MS;
   const quota = codexQuotaWindow(quotaStats);
@@ -279,13 +297,13 @@ export class UsageStore {
     return this.get();
   }
 
-  get() {
-    return aggregateDevices(this.devices);
+  get(now = Date.now()) {
+    return aggregateDevices(this.devices, now);
   }
 
   async getProjected(quotaStats, now = Date.now()) {
     const previous = JSON.stringify(this.projection);
-    const projected = projectUsageSnapshot(this.get(), quotaStats, this.projection, now);
+    const projected = projectUsageSnapshot(this.get(now), quotaStats, this.projection, now);
     this.projection = projected.state;
     if (JSON.stringify(this.projection) !== previous) await this.persist();
     return projected.usage;
@@ -298,7 +316,14 @@ export class UsageStore {
   async ingest(deviceId, value) {
     const id = normalizeDeviceId(deviceId);
     if (id !== "manual") delete this.devices.manual;
-    this.devices[id] = normalizeUsageSnapshot(value);
+    const next = normalizeUsageSnapshot(value);
+    const previous = this.devices[id];
+    if (previous && Date.parse(next.capturedAt) < Date.parse(previous.capturedAt)) return this.get();
+    if (next.accountUsage?.status === "unavailable" && next.accountUsage.accountKey
+      && previous?.accountUsage?.accountKey === next.accountUsage.accountKey && previous.accountUsage.capturedAt) {
+      next.accountUsage = { ...previous.accountUsage, status: "stale" };
+    }
+    this.devices[id] = next;
     await this.persist();
     return this.get();
   }

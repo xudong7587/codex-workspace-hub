@@ -31,13 +31,13 @@ namespace CWUsageReporter {
         public SettingsForm(ReporterConfig config, string status, DateTime? lastSuccess, UsageOverview usage) {
             original = config; Text = "CW Token 详情采集器";
             Icon = Program.AppIcon;
-            StartPosition = FormStartPosition.CenterScreen; MinimumSize = new Size(850, 700); ClientSize = new Size(940, 720);
+            StartPosition = FormStartPosition.CenterScreen; MinimumSize = new Size(950, 750); ClientSize = new Size(1060, 780);
             BackColor = Theme.Background; ForeColor = Theme.Text; Font = FontOf(16F, FontStyle.Regular);
             AutoScaleMode = AutoScaleMode.None; FormBorderStyle = FormBorderStyle.Sizable;
 
             TableLayoutPanel root = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(38, 26, 38, 20), ColumnCount = 1, RowCount = 8, BackColor = Theme.Background };
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 102)); root.RowStyles.Add(new RowStyle(SizeType.Absolute, 1));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 51)); root.RowStyles.Add(new RowStyle(SizeType.Absolute, 124));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 51)); root.RowStyles.Add(new RowStyle(SizeType.Absolute, 154));
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 1)); root.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 100)); root.RowStyles.Add(new RowStyle(SizeType.Absolute, 56));
             Controls.Add(root);
@@ -56,7 +56,7 @@ namespace CWUsageReporter {
             heading.Controls.Add(new PictureBox { Dock = DockStyle.Fill, Margin = new Padding(0, 8, 18, 28), SizeMode = PictureBoxSizeMode.Zoom, Image = Program.AppBitmap }, 0, 0);
             TableLayoutPanel copy = new TableLayoutPanel { Dock = DockStyle.Fill, BackColor = Theme.Background, ColumnCount = 1, RowCount = 4, Margin = new Padding(0) };
             copy.RowStyles.Add(new RowStyle(SizeType.Absolute, 20)); copy.RowStyles.Add(new RowStyle(SizeType.Absolute, 40)); copy.RowStyles.Add(new RowStyle(SizeType.Absolute, 27)); copy.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            copy.Controls.Add(LabelOf("CW  /  TOKEN REPORTER", 14F, FontStyle.Bold, Theme.Accent), 0, 0);
+            copy.Controls.Add(LabelOf("CW  /  TOKEN REPORTER  ·  v" + ReporterConfig.AppVersion, 14F, FontStyle.Bold, Theme.Accent), 0, 0);
             copy.Controls.Add(LabelOf("Token 用量采集器", 30F, FontStyle.Bold, Theme.Text), 0, 1);
             copy.Controls.Add(LabelOf("安静地汇总 Codex 用量；不读取提示词、回答或项目文件。", 15F, FontStyle.Regular, Theme.TextSoft), 0, 2);
             heading.Controls.Add(copy, 1, 0); return heading;
@@ -66,7 +66,7 @@ namespace CWUsageReporter {
             TableLayoutPanel row = new TableLayoutPanel { Dock = DockStyle.Fill, BackColor = Theme.Background, ColumnCount = 2, RowCount = 1, Margin = new Padding(0) };
             row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 26)); row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             Label dot = LabelOf("●", 16F, FontStyle.Regular, config.IsReady() ? Theme.Accent : Theme.Warning);
-            string meta = lastSuccess.HasValue ? "  ·  CW 汇总 " + Math.Max(1, usage == null ? 1 : usage.DeviceCount) + " 台设备" : "  ·  保存后立即上报";
+            string meta = usage != null ? "  ·  " + usage.SourceNote : "  ·  保存后立即上报";
             Label state = LabelOf((status ?? "等待连接") + meta, 16F, FontStyle.Bold, Theme.Text); row.Controls.Add(dot, 0, 0); row.Controls.Add(state, 1, 0); return row;
         }
 
@@ -82,9 +82,10 @@ namespace CWUsageReporter {
             Panel host = new Panel { Dock = DockStyle.Fill, BackColor = Theme.Background, Margin = new Padding(0), Padding = new Padding(16, 9, 16, 8) };
             TableLayoutPanel body = new TableLayoutPanel { Dock = DockStyle.Fill, BackColor = Theme.Background, ColumnCount = 1, RowCount = 3, Margin = new Padding(0) };
             body.RowStyles.Add(new RowStyle(SizeType.Absolute, 24)); body.RowStyles.Add(new RowStyle(SizeType.Absolute, 42)); body.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            string value = period == null ? "等待数据" : (period.Estimated ? "估算  " : "折合  ") + "¥" + (period.CostUsd * exchange).ToString("0.00");
+            string value = period == null ? "等待数据" : "本机 API 折算 ¥" + (period.PricedCostUsd * exchange).ToString("0.00")
+                + (period.EstimatedCostUsd > 0 ? "\n未知价格估算 ¥" + (period.EstimatedCostUsd * exchange).ToString("0.00") : "\n非实际账单");
             body.Controls.Add(LabelOf(title.ToUpperInvariant() + "  TOKEN", 13F, FontStyle.Bold, Theme.TextSoft), 0, 0);
-            body.Controls.Add(LabelOf(period == null ? "—" : FormatTokens(period.TotalTokens), 30F, FontStyle.Bold, Theme.Text), 0, 1);
+            body.Controls.Add(LabelOf(period == null || !period.TokensAvailable ? "待官方返回" : FormatTokens(period.TotalTokens) + (period.Partial ? " *" : ""), 30F, FontStyle.Bold, Theme.Text), 0, 1);
             body.Controls.Add(LabelOf(value, 15F, FontStyle.Regular, period != null && period.Estimated ? Theme.Warning : Theme.Accent), 0, 2); host.Controls.Add(body);
             if (divider) host.Controls.Add(new Panel { Dock = DockStyle.Right, Width = 1, BackColor = Theme.Border }); return host;
         }
@@ -106,7 +107,7 @@ namespace CWUsageReporter {
             TableLayoutPanel foot = new TableLayoutPanel { Dock = DockStyle.Fill, BackColor = Theme.Background, ColumnCount = 1, RowCount = 2, Margin = new Padding(0) };
             foot.RowStyles.Add(new RowStyle(SizeType.Absolute, 38)); foot.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             startup.Text = "随 Windows 登录启动，并在后台保持更新"; startup.AutoSize = true; startup.ForeColor = Theme.TextSoft; startup.Margin = new Padding(0, 10, 0, 0);
-            Label privacy = LabelOf("仅扫描本机 Codex 会话文件中的 token_count 数字。", 14F, FontStyle.Regular, Theme.TextFaint); privacy.Padding = new Padding(0, 4, 0, 0);
+            Label privacy = LabelOf("官方账号 Token 跨设备去重；* 为部分日数据。金额仅为本机日志折算，不是账号账单。", 14F, FontStyle.Regular, Theme.TextFaint); privacy.Padding = new Padding(0, 4, 0, 0);
             foot.Controls.Add(startup, 0, 0); foot.Controls.Add(privacy, 0, 1); fields.Controls.Add(foot, 0, 3); fields.SetColumnSpan(foot, 2); return fields;
         }
 
