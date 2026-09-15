@@ -8,20 +8,20 @@ using System.Web.Script.Serialization;
 namespace CWUsageReporter {
     public sealed class UsageCounters {
         public long TotalTokens, InputTokens, CacheReadTokens, OutputTokens, ReasoningTokens, MessageCount, UnpricedTokens;
-        public double CostUsd;
+        public double CostUsd, EstimatedCostUsd;
         public void Add(UsageCounters other) {
             if (other == null) return;
             TotalTokens += other.TotalTokens; InputTokens += other.InputTokens; CacheReadTokens += other.CacheReadTokens;
             OutputTokens += other.OutputTokens; ReasoningTokens += other.ReasoningTokens; MessageCount += other.MessageCount;
-            UnpricedTokens += other.UnpricedTokens; CostUsd += other.CostUsd;
+            UnpricedTokens += other.UnpricedTokens; CostUsd += other.CostUsd; EstimatedCostUsd += other.EstimatedCostUsd;
         }
         public Dictionary<string, object> Json() {
             return new Dictionary<string, object> {
                 { "totalTokens", TotalTokens }, { "inputTokens", InputTokens }, { "cacheReadTokens", CacheReadTokens },
                 { "cacheWriteTokens", 0L }, { "outputTokens", OutputTokens }, { "reasoningTokens", ReasoningTokens },
                 { "messageCount", MessageCount }, { "unpricedTokens", UnpricedTokens },
-                { "costUsd", Math.Round(CostUsd + UnpricedTokens * 4d / 1000000d, 8) },
-                { "pricedCostUsd", Math.Round(CostUsd, 8) }, { "estimatedCostUsd", Math.Round(UnpricedTokens * 4d / 1000000d, 8) },
+                { "costUsd", Math.Round(CostUsd + EstimatedCostUsd, 8) },
+                { "pricedCostUsd", Math.Round(CostUsd, 8) }, { "estimatedCostUsd", Math.Round(EstimatedCostUsd, 8) },
                 { "estimated", UnpricedTokens > 0 }
             };
         }
@@ -148,7 +148,14 @@ namespace CWUsageReporter {
                 bool longContext = input > 272000 && (normalized.StartsWith("gpt-6") || normalized.StartsWith("gpt-5.4") || normalized.StartsWith("gpt-5.5") || normalized.StartsWith("gpt-5.6"));
                 double inputMultiplier = longContext ? 2 : 1, outputMultiplier = longContext ? 1.5 : 1;
                 item.CostUsd = ((input - cached) * price.Input * inputMultiplier + cached * price.Cached * inputMultiplier + output * price.Output * outputMultiplier) / 1000000.0;
-            } else item.UnpricedTokens = total;
+            } else {
+                item.UnpricedTokens = total;
+                // Unknown models use Sol's high-context reference rates. Any
+                // tokens without an input/output breakdown use the output rate.
+                Price sol = Prices["gpt-5.6-sol"];
+                item.EstimatedCostUsd = ((input - cached) * sol.Input * 2 + cached * sol.Cached * 2
+                    + (output + Math.Max(0, total - input - output)) * sol.Output * 1.5) / 1000000d;
+            }
             return item;
         }
 

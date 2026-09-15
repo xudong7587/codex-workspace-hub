@@ -7,6 +7,18 @@ using System.Text;
 using System.Web.Script.Serialization;
 
 namespace CWUsageReporter {
+    internal static class UsageFormatting {
+        public static double SolHighCachedEstimate(long tokens) {
+            return Math.Max(0, tokens) / 1000000d * (8d * 0.1d + 0.8d * 0.9d);
+        }
+
+        public static string Tokens(long value) {
+            return value < 100000000
+                ? (value / 10000d).ToString("0.0") + "万"
+                : (value / 100000000d).ToString("0.0") + "亿";
+        }
+    }
+
     internal sealed class UsagePeriodView {
         public long TotalTokens { get; set; }
         public double CostUsd { get; set; }
@@ -15,6 +27,10 @@ namespace CWUsageReporter {
         public bool Partial { get; set; }
         public double PricedCostUsd { get; set; }
         public double EstimatedCostUsd { get; set; }
+        public double? ValueCny(double exchange) {
+            if (!TokensAvailable) return null;
+            return (PricedCostUsd + EstimatedCostUsd) * exchange;
+        }
     }
 
     internal sealed class UsageOverview {
@@ -46,7 +62,7 @@ namespace CWUsageReporter {
                 ApplyCost(result.Day, details, "day"); ApplyCost(result.Week, details, "week");
                 ApplyCost(result.Month, details, "month"); ApplyCost(result.Total, details, "total");
                 result.UsdCnyRate = PositiveDouble(local, "usdCnyRate", fallbackRate);
-                result.SourceNote = "官方账号 Token · 日数据至 " + Text(official, "latestBucketDate") + (Bool(official, "stale") ? "（缓存）" : "") + " · 金额仅设备 " + Text(local, "deviceId");
+                result.SourceNote = "官方账号 Token · 日数据至 " + Text(official, "latestBucketDate") + (Bool(official, "stale") ? "（缓存）" : "");
             } else result.SourceNote = "本地日志统计（非账号总量）";
             return result.Total == null ? null : result;
         }
@@ -55,15 +71,20 @@ namespace CWUsageReporter {
             var result = new UsageOverview {
                 UsdCnyRate = rate, DeviceCount = 1,
                 Day = Period(snapshot.Today), Week = Period(snapshot.Week),
-                Month = Period(snapshot.Month), Total = Period(snapshot.Total), SourceNote = "本机日志（CW 官方统计暂不可用）"
+                Month = Period(snapshot.Month), Total = Period(snapshot.Total), SourceNote = "今日 / 本周 / 本月：本机实时日志 · 累计：本机日志"
             };
             var official = Dict(snapshot.Payload, "accountUsage");
-            if (official != null) {
+            if (official != null && Text(official, "status") == "available" && official.ContainsKey("lifetimeTokens") && official["lifetimeTokens"] != null) {
                 result.OfficialMode = true;
-                ApplyRawTokens(result.Day, official, "day"); ApplyRawTokens(result.Week, official, "week");
-                ApplyRawTokens(result.Month, official, "month"); ApplyRawTokens(result.Total, official, "total");
-                result.SourceNote = Text(official, "status") == "available" ? "官方账号 Token（本机读取）· 金额为本机日志"
-                    : "官方暂不可用 · 请检查本机 Codex 登录及版本";
+                long localTotalTokens = result.Total.TotalTokens;
+                ApplyRawTokens(result.Total, official, "total");
+                long missingTokens = Math.Max(0, result.Total.TotalTokens - localTotalTokens);
+                if (missingTokens > 0) {
+                    result.Total.EstimatedCostUsd += UsageFormatting.SolHighCachedEstimate(missingTokens);
+                    result.Total.CostUsd = result.Total.PricedCostUsd + result.Total.EstimatedCostUsd;
+                    result.Total.Estimated = true;
+                }
+                result.SourceNote = "近期：本机实时日志 · 累计：Codex 软件总量";
             }
             return result;
         }
@@ -106,7 +127,7 @@ namespace CWUsageReporter {
         private static UsagePeriodView Period(UsageCounters value) {
             if (value == null) return new UsagePeriodView();
             bool estimated = value.UnpricedTokens > 0;
-            return new UsagePeriodView { TotalTokens = value.TotalTokens, TokensAvailable = true, CostUsd = value.CostUsd + value.UnpricedTokens * 4d / 1000000d, PricedCostUsd = value.CostUsd, EstimatedCostUsd = value.UnpricedTokens * 4d / 1000000d, Estimated = estimated };
+            return new UsagePeriodView { TotalTokens = value.TotalTokens, TokensAvailable = true, CostUsd = value.CostUsd + value.EstimatedCostUsd, PricedCostUsd = value.CostUsd, EstimatedCostUsd = value.EstimatedCostUsd, Estimated = estimated };
         }
         private static UsagePeriodView Period(Dictionary<string, object> periods, string key) {
             Dictionary<string, object> value = Dict(periods, key);
