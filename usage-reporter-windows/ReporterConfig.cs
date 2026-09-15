@@ -13,7 +13,7 @@ using Microsoft.Win32;
 namespace CWUsageReporter {
     [Serializable]
     public sealed class ReporterConfig {
-        public const string AppVersion = "1.0.6";
+        public const string AppVersion = "1.0.14";
         public string HubUrl { get; set; }
         public string ProtectedKey { get; set; }
         public string DeviceId { get; set; }

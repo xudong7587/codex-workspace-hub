@@ -80,13 +80,14 @@ namespace CWUsageReporter {
 
         private Control Metric(string title, UsagePeriodView period, double exchange, bool divider) {
             Panel host = new Panel { Dock = DockStyle.Fill, BackColor = Theme.Background, Margin = new Padding(0), Padding = new Padding(16, 9, 16, 8) };
-            TableLayoutPanel body = new TableLayoutPanel { Dock = DockStyle.Fill, BackColor = Theme.Background, ColumnCount = 1, RowCount = 3, Margin = new Padding(0) };
-            body.RowStyles.Add(new RowStyle(SizeType.Absolute, 24)); body.RowStyles.Add(new RowStyle(SizeType.Absolute, 42)); body.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            string value = period == null ? "等待数据" : "本机 API 折算 ¥" + (period.PricedCostUsd * exchange).ToString("0.00")
-                + (period.EstimatedCostUsd > 0 ? "\n未知价格估算 ¥" + (period.EstimatedCostUsd * exchange).ToString("0.00") : "\n非实际账单");
+            TableLayoutPanel body = new TableLayoutPanel { Dock = DockStyle.Fill, BackColor = Theme.Background, ColumnCount = 1, RowCount = 4, Margin = new Padding(0) };
+            body.RowStyles.Add(new RowStyle(SizeType.Absolute, 24)); body.RowStyles.Add(new RowStyle(SizeType.Absolute, 42)); body.RowStyles.Add(new RowStyle(SizeType.Absolute, 42)); body.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            double? valueCny = period == null ? null : period.ValueCny(exchange);
+            string value = !valueCny.HasValue ? "—" : "¥" + valueCny.Value.ToString("0.00");
             body.Controls.Add(LabelOf(title.ToUpperInvariant() + "  TOKEN", 13F, FontStyle.Bold, Theme.TextSoft), 0, 0);
-            body.Controls.Add(LabelOf(period == null || !period.TokensAvailable ? "待官方返回" : FormatTokens(period.TotalTokens) + (period.Partial ? " *" : ""), 30F, FontStyle.Bold, Theme.Text), 0, 1);
-            body.Controls.Add(LabelOf(value, 15F, FontStyle.Regular, period != null && period.Estimated ? Theme.Warning : Theme.Accent), 0, 2); host.Controls.Add(body);
+            body.Controls.Add(LabelOf(period == null || !period.TokensAvailable ? "待官方返回" : UsageFormatting.Tokens(period.TotalTokens) + (period.Partial ? " *" : ""), 30F, FontStyle.Bold, Theme.Text), 0, 1);
+            body.Controls.Add(LabelOf(value, 30F, FontStyle.Bold, Theme.Accent), 0, 2);
+            body.Controls.Add(LabelOf("用量价值", 11F, FontStyle.Regular, Theme.TextSoft), 0, 3); host.Controls.Add(body);
             if (divider) host.Controls.Add(new Panel { Dock = DockStyle.Right, Width = 1, BackColor = Theme.Border }); return host;
         }
 
@@ -107,7 +108,7 @@ namespace CWUsageReporter {
             TableLayoutPanel foot = new TableLayoutPanel { Dock = DockStyle.Fill, BackColor = Theme.Background, ColumnCount = 1, RowCount = 2, Margin = new Padding(0) };
             foot.RowStyles.Add(new RowStyle(SizeType.Absolute, 38)); foot.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             startup.Text = "随 Windows 登录启动，并在后台保持更新"; startup.AutoSize = true; startup.ForeColor = Theme.TextSoft; startup.Margin = new Padding(0, 10, 0, 0);
-            Label privacy = LabelOf("官方账号 Token 跨设备去重；* 为部分日数据。金额仅为本机日志折算，不是账号账单。", 14F, FontStyle.Regular, Theme.TextFaint); privacy.Padding = new Padding(0, 4, 0, 0);
+            Label privacy = LabelOf("用量价值为 API 单价折算参考，不是实际账单；数据来源见顶部说明。", 12F, FontStyle.Regular, Theme.TextFaint); privacy.Padding = new Padding(0, 4, 0, 0);
             foot.Controls.Add(startup, 0, 0); foot.Controls.Add(privacy, 0, 1); fields.Controls.Add(foot, 0, 3); fields.SetColumnSpan(foot, 2); return fields;
         }
 
@@ -145,6 +146,5 @@ namespace CWUsageReporter {
             lock (FontCache) { if (!FontCache.TryGetValue(key, out font)) { font = new Font(UiFontName, pixels, style, GraphicsUnit.Pixel); FontCache[key] = font; } }
             return font;
         }
-        private static string FormatTokens(long value) { if (value >= 1000000000) return (value / 1000000000d).ToString("0.##") + "B"; if (value >= 1000000) return (value / 1000000d).ToString("0.##") + "M"; if (value >= 1000) return (value / 1000d).ToString("0.##") + "K"; return value.ToString(); }
     }
 }
