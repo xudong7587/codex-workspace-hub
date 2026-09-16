@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
+using System.Drawing.Drawing2D;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows.Forms;
 
@@ -33,6 +35,7 @@ namespace CWUsageReporter {
         private string lastStatus = "等待首次上报";
         private DateTime? lastSuccess;
         private UsageOverview usageOverview;
+        private Icon quotaIcon;
         private static readonly string LogPath = Path.Combine(ReporterConfig.DataDirectory, "reporter.log");
 
         public ReporterContext(bool startInBackground) {
@@ -92,6 +95,21 @@ namespace CWUsageReporter {
                     if (Convert.ToString(accountUsage["status"]) != "available") Log("官方账号统计暂不可用；本地日志仍会上报");
                     HubClient client = new HubClient(snapshot);
                     client.Post("/api/collector/v1/usage", new Dictionary<string, object> { { "deviceId", snapshot.DeviceId }, { "snapshot", usage.Payload } });
+                    try {
+                        Dictionary<string, object> stats = client.Get("/api/stats");
+                        long cachedOfficialTotal;
+                        if (Convert.ToString(accountUsage["status"]) != "available"
+                            && UsageOverview.TryOfficialTotalFromStats(stats, out cachedOfficialTotal)) {
+                            usageOverview.ApplyOfficialTotal(cachedOfficialTotal);
+                            Log("本机官方统计暂不可用，累计沿用 CW 最近官方值 " + cachedOfficialTotal);
+                        }
+                        QuotaOverview quota = QuotaOverview.FromStats(stats);
+                        if (quota.SessionRemaining.HasValue || quota.WeeklyRemaining.HasValue) {
+                            Log("额度图标：5小时剩余 " + (quota.SessionRemaining.HasValue ? quota.SessionRemaining.Value + "%" : "—")
+                                + "，每周剩余 " + (quota.WeeklyRemaining.HasValue ? quota.WeeklyRemaining.Value + "%" : "—"));
+                            uiContext.Post(delegate { UpdateQuotaTray(quota); }, null);
+                        }
+                    } catch (Exception quotaError) { Log("额度图标暂未更新：" + Short(quotaError.Message, 120)); }
                     lastSuccess = DateTime.Now;
                     lastStatus = "已连接，最近上报 " + lastSuccess.Value.ToString("HH:mm");
                     tray.Text = "CW Token 详情采集器 · 已更新";
@@ -111,13 +129,49 @@ namespace CWUsageReporter {
             uiContext.Post(delegate { tray.ShowBalloonTip(3500, "CW Token 详情采集器", Short(text, 230), icon); }, null);
         }
 
+        private void UpdateQuotaTray(QuotaOverview quota) {
+            int shown = quota.SessionRemaining ?? quota.WeeklyRemaining ?? 0;
+            Icon next = CreatePercentIcon(shown);
+            Icon previous = quotaIcon;
+            quotaIcon = next;
+            tray.Icon = next;
+            string session = quota.SessionRemaining.HasValue ? quota.SessionRemaining.Value + "%" : "—";
+            string weekly = quota.WeeklyRemaining.HasValue ? quota.WeeklyRemaining.Value + "%" : "—";
+            tray.Text = Short("CW · 5小时剩余 " + session + " · 每周剩余 " + weekly, 63);
+            if (previous != null) previous.Dispose();
+        }
+
+        private static Icon CreatePercentIcon(int percent) {
+            percent = Math.Max(0, Math.Min(100, percent));
+            using (Bitmap bitmap = new Bitmap(32, 32))
+            using (Graphics graphics = Graphics.FromImage(bitmap)) {
+                graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                Color background = percent <= 10 ? Color.FromArgb(198, 62, 55)
+                    : percent <= 30 ? Color.FromArgb(205, 132, 24) : Color.FromArgb(0, 132, 104);
+                using (Brush circle = new SolidBrush(background)) graphics.FillEllipse(circle, 0, 0, 31, 31);
+                float size = percent >= 100 ? 14F : percent >= 10 ? 19F : 22F;
+                using (Font font = new Font("Segoe UI", size, FontStyle.Bold, GraphicsUnit.Pixel))
+                using (Brush textBrush = new SolidBrush(Color.White))
+                using (StringFormat format = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center }) {
+                    string text = percent.ToString();
+                    graphics.DrawString(text, font, textBrush, new RectangleF(0, -1, 31, 32), format);
+                }
+                IntPtr handle = bitmap.GetHicon();
+                try { using (Icon temporary = Icon.FromHandle(handle)) return (Icon)temporary.Clone(); }
+                finally { DestroyIcon(handle); }
+            }
+        }
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto)]
+        private static extern bool DestroyIcon(IntPtr handle);
+
         private static string Short(string value, int limit) { value = value ?? ""; return value.Length <= limit ? value : value.Substring(0, limit) + "…"; }
         private static void Log(string message) { try { Directory.CreateDirectory(ReporterConfig.DataDirectory); File.AppendAllText(LogPath, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " " + message + Environment.NewLine); } catch { } }
         private static void OpenLog() { try { Directory.CreateDirectory(ReporterConfig.DataDirectory); if (!File.Exists(LogPath)) File.WriteAllText(LogPath, ""); Process.Start(LogPath); } catch { } }
 
         protected override void ExitThreadCore() {
             if (timer != null) timer.Dispose();
-            tray.Visible = false; tray.Dispose();
+            tray.Visible = false; tray.Dispose(); if (quotaIcon != null) quotaIcon.Dispose();
             base.ExitThreadCore();
         }
     }

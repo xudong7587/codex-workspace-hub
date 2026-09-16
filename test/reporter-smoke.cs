@@ -8,6 +8,9 @@ internal static class ReporterSmoke {
     private static void Assert(bool value, string message) { if (!value) throw new Exception(message); }
     public static void Main(string[] args) {
         var json = new JavaScriptSerializer();
+        var quotaStats = json.Deserialize<Dictionary<string, object>>("{\"limits\":{\"providers\":[{\"provider\":\"codex\",\"windows\":[{\"kind\":\"session\",\"usedPercent\":18.4},{\"kind\":\"weekly\",\"usedPercent\":37}]}]}}");
+        var quota = QuotaOverview.FromStats(quotaStats);
+        Assert(quota.SessionRemaining == 82 && quota.WeeklyRemaining == 63, "Quota remaining percentages were not parsed");
         Assert(UsageFormatting.Tokens(99999999L) == "10000.0万", "Sub-100-million unit must be 万 with one decimal");
         Assert(UsageFormatting.Tokens(100000000L) == "1.0亿", "100 million threshold must use 亿 with one decimal");
         Assert(UsageFormatting.Tokens(98864107L) == "9886.4万", "Token value must round to one decimal");
@@ -40,6 +43,11 @@ internal static class ReporterSmoke {
         direct["status"] = "unavailable";
         var unavailable = UsageOverview.FromSnapshot(snapshotForView, 7.2);
         Assert(unavailable.Day.TotalTokens == 123 && unavailable.Total.TotalTokens == 999 && !unavailable.OfficialMode, "Official failure erased local fallback");
+        var cachedStats = json.Deserialize<Dictionary<string, object>>("{\"usage\":{\"accountUsage\":{\"periods\":{\"total\":{\"totalTokens\":1000999}}}}}");
+        long cachedTotal;
+        Assert(UsageOverview.TryOfficialTotalFromStats(cachedStats, out cachedTotal) && cachedTotal == 1000999, "Cached official total was not parsed");
+        unavailable.ApplyOfficialTotal(cachedTotal);
+        Assert(unavailable.Total.TotalTokens == 1000999 && unavailable.Day.TotalTokens == 123, "Cached official total replaced local recent periods");
         Assert(fallback.Total.PricedCostUsd == 2, "Fallback local pricing lost");
         Assert(Math.Abs(fallback.Total.ValueCny(7.2).Value - 3.52d * 7.2) < 0.000001, "Official/local gap must use Sol high tier with 90% cache hits");
         Assert(Math.Abs(UsageFormatting.SolHighCachedEstimate(1000000) - 1.52d) < 0.000001, "Sol high cached estimate must weight 90% cached input");
