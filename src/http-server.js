@@ -6,7 +6,6 @@ import { fileURLToPath } from "node:url";
 import { createAdminApi } from "./admin-api.js";
 import { authenticateRequest } from "./auth.js";
 import { createCollectorApi } from "./collector-api.js";
-import { createSnapshotApi } from "./snapshot-api.js";
 
 const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_PUBLIC_DIR = join(MODULE_DIR, "..", "public");
@@ -159,7 +158,6 @@ export function createGatewayServer(input, maybeOptions = {}) {
   const providerManager = options.providerManager || options.quotaService;
   const credentialStore = options.credentialStore || null;
   const usageStore = options.usageStore || null;
-  const snapshotStore = options.snapshotStore || null;
   const logger = options.logger || null;
   const bridgeSecret = () => credentialStore?.getBridgeSecret()
     || config.tokenMonitorSecret
@@ -172,11 +170,9 @@ export function createGatewayServer(input, maybeOptions = {}) {
     adminToken: config.adminToken,
     credentialStore,
     usageStore,
-    snapshotStore,
     logger,
   });
   const handleCollectorApi = options.handleCollectorApi || createCollectorApi({ usageStore, logger });
-  const handleSnapshotApi = options.handleSnapshotApi || createSnapshotApi({ snapshotStore, logger });
 
   return createServer((request, response) => {
     void (async () => {
@@ -185,6 +181,11 @@ export function createGatewayServer(input, maybeOptions = {}) {
       if (pathname.startsWith("/admin/api/")) {
         const result = await handleAdminApi(request, pathname);
         writeJson(request, response, result.statusCode, result.payload, result.headers);
+        return;
+      }
+
+      if (pathname.startsWith("/api/cw/v1/")) {
+        writeJson(request, response, 404, { error: "not_found" });
         return;
       }
 
@@ -207,24 +208,6 @@ export function createGatewayServer(input, maybeOptions = {}) {
             result.contentType || "application/octet-stream",
             result.headers,
           );
-        } else {
-          writeJson(request, response, result.statusCode, result.payload, result.headers);
-        }
-        return;
-      }
-
-      if (pathname.startsWith("/api/cw/v1/")) {
-        if (!hasCredentialHeaders(request)) {
-          writeJson(request, response, 401, { error: "authentication_required" }, { "WWW-Authenticate": "Bearer" });
-          return;
-        }
-        if (!authenticateRequest(request, bridgeSecret())) {
-          writeJson(request, response, 403, { error: "forbidden" });
-          return;
-        }
-        const result = await handleSnapshotApi(request, pathname);
-        if (result.body !== undefined) {
-          writeBody(request, response, result.statusCode, result.body, result.contentType || "application/octet-stream", result.headers);
         } else {
           writeJson(request, response, result.statusCode, result.payload, result.headers);
         }

@@ -1,6 +1,6 @@
 services:
-  workspace-hub:
-    image: ghcr.io/xudong7587/codex-workspace-hub:latest
+  vivo-watch-hub:
+    image: ghcr.io/xudong7587/vivo-watch-hub:latest
     pull_policy: always
     restart: unless-stopped
     init: true
@@ -21,7 +21,6 @@ services:
 
     volumes:
       - hub-data:/data
-      - ./cw-snapshots:/data/development-snapshots
 
     read_only: true
     tmpfs:

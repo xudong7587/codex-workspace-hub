@@ -17,7 +17,7 @@ namespace CWUsageReporter {
         private static void Main(string[] args) {
             bool created;
             using (Mutex mutex = new Mutex(true, "Local\\CWUsageReporter.SingleInstance", out created)) {
-                if (!created) { MessageBox.Show("CW Token 详情采集器已经在运行。", "CW Token 详情采集器"); return; }
+                if (!created) { MessageBox.Show("vivo-watch-hub Token 详情采集器已经在运行。", "vivo-watch-hub Token 详情采集器"); return; }
                 Application.EnableVisualStyles();
                 Application.SetCompatibleTextRenderingDefault(false);
                 bool startInBackground = Array.Exists(args ?? new string[0], value => String.Equals(value, "--background", StringComparison.OrdinalIgnoreCase));
@@ -49,7 +49,7 @@ namespace CWUsageReporter {
             menu.Items.Add("查看日志", null, delegate { OpenLog(); });
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add("退出", null, delegate { ExitThread(); });
-            tray = new NotifyIcon { Icon = Program.AppIcon, Text = "CW Token 详情采集器", Visible = true, ContextMenuStrip = menu };
+            tray = new NotifyIcon { Icon = Program.AppIcon, Text = "vivo-watch-hub Token 详情采集器", Visible = true, ContextMenuStrip = menu };
             tray.DoubleClick += delegate { ShowSettings(); };
             ResetTimer();
             if (config.IsReady()) {
@@ -59,7 +59,7 @@ namespace CWUsageReporter {
                 ShowSettings();
             } else {
                 lastStatus = "尚未配置，请双击托盘图标完成连接";
-                tray.Text = "CW Token 详情采集器 · 尚未配置";
+                tray.Text = "vivo-watch-hub Token 详情采集器 · 尚未配置";
                 Log("后台启动时未找到可用配置，已保持托盘运行");
             }
             Log("启动 v" + ReporterConfig.AppVersion);
@@ -101,7 +101,7 @@ namespace CWUsageReporter {
                         if (Convert.ToString(accountUsage["status"]) != "available"
                             && UsageOverview.TryOfficialTotalFromStats(stats, out cachedOfficialTotal)) {
                             usageOverview.ApplyOfficialTotal(cachedOfficialTotal);
-                            Log("本机官方统计暂不可用，累计沿用 CW 最近官方值 " + cachedOfficialTotal);
+                            Log("本机官方统计暂不可用，累计沿用 Hub 最近官方值 " + cachedOfficialTotal);
                         }
                         QuotaOverview quota = QuotaOverview.FromStats(stats);
                         if (quota.SessionRemaining.HasValue || quota.WeeklyRemaining.HasValue) {
@@ -112,13 +112,13 @@ namespace CWUsageReporter {
                     } catch (Exception quotaError) { Log("额度图标暂未更新：" + Short(quotaError.Message, 120)); }
                     lastSuccess = DateTime.Now;
                     lastStatus = "已连接，最近上报 " + lastSuccess.Value.ToString("HH:mm");
-                    tray.Text = "CW Token 详情采集器 · 已更新";
+                    tray.Text = "vivo-watch-hub Token 详情采集器 · 已更新";
                     UsagePeriodView day = usageOverview.Day ?? new UsagePeriodView();
                     Log("上报完成：本机今日 " + day.TotalTokens + " tokens，扫描 " + usage.FilesScanned + " 个会话文件");
                     if (notify) Balloon(day.TokensAvailable ? "今日 " + UsageFormatting.Tokens(day.TotalTokens) + " tokens" : "官方今日暂未返回", ToolTipIcon.Info);
                 } catch (Exception error) {
                     lastStatus = "连接失败：" + Short(error.Message, 90);
-                    tray.Text = "CW Token 详情采集器 · 连接异常";
+                    tray.Text = "vivo-watch-hub Token 详情采集器 · 连接异常";
                     Log(lastStatus);
                     if (notify) Balloon(lastStatus, ToolTipIcon.Error);
                 } finally { Interlocked.Exchange(ref running, 0); }
@@ -126,7 +126,7 @@ namespace CWUsageReporter {
         }
 
         private void Balloon(string text, ToolTipIcon icon) {
-            uiContext.Post(delegate { tray.ShowBalloonTip(3500, "CW Token 详情采集器", Short(text, 230), icon); }, null);
+            uiContext.Post(delegate { tray.ShowBalloonTip(3500, "vivo-watch-hub Token 详情采集器", Short(text, 230), icon); }, null);
         }
 
         private void UpdateQuotaTray(QuotaOverview quota) {
@@ -137,7 +137,7 @@ namespace CWUsageReporter {
             tray.Icon = next;
             string session = quota.SessionRemaining.HasValue ? quota.SessionRemaining.Value + "%" : "—";
             string weekly = quota.WeeklyRemaining.HasValue ? quota.WeeklyRemaining.Value + "%" : "—";
-            tray.Text = Short("CW · 5小时剩余 " + session + " · 每周剩余 " + weekly, 63);
+            tray.Text = Short("Hub · 5小时剩余 " + session + " · 每周剩余 " + weekly, 63);
             if (previous != null) previous.Dispose();
         }
 

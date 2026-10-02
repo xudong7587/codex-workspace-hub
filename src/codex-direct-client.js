@@ -317,7 +317,7 @@ export class CodexDirectClient extends EventEmitter {
         "ChatGPT-Account-Id": id,
         "OAI-Product-Sku": "codex",
         originator: "codex_workspace_hub",
-        "User-Agent": `codex-workspace-hub/${APP_VERSION}`,
+        "User-Agent": `vivo-watch-hub/${APP_VERSION}`,
       },
     });
   }

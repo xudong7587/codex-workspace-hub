@@ -7,11 +7,9 @@
   const LEGACY_THEME_STORAGE_KEY = "vwatch-quota-hub.theme";
   const STATIC_PROVIDER_IDS = ["codex", "openrouter"];
   const THEME_ORDER = ["system", "light", "dark"];
-  const PAGE_NAMES = new Set(["overview", "sync", "quota"]);
+  const PAGE_NAMES = new Set(["overview", "quota"]);
   const PAGE_ALIASES = {
-    devices: "sync",
-    workspaces: "sync",
-    "sync-strategy": "sync",
+    devices: "quota",
     codex: "quota",
     providers: "quota",
     "provider-codex": "quota",
@@ -30,7 +28,6 @@
   let codexLoginStartedAt = 0;
   let codexLoginGeneration = 0;
   let codexLoginId = null;
-  let syncPolling = false;
 
   const byId = (id) => document.getElementById(id);
 
@@ -377,7 +374,6 @@
     const settings = state.settings && typeof state.settings === "object" ? state.settings : {};
     const bridge = state.bridge && typeof state.bridge === "object" ? state.bridge : {};
     const providers = Array.isArray(state.providers) ? state.providers.filter(isProvider) : [];
-    const sync = state.sync && typeof state.sync === "object" ? state.sync : {};
 
     byId("appVersion").textContent = typeof state.version === "string" && state.version
       ? `v${state.version}`
@@ -408,39 +404,32 @@
       ? formatBytes(Number(state.runtime.rssBytes))
       : "未提供";
 
-    const devices = mergeCollectorDevices(state.usage, sync);
-    byId("enabledProviderCount").textContent = devices.length ? `${devices.length} 台设备` : "等待插件连接";
-    byId("latestUpdateTime").textContent = findLatestSyncActivity(state.usage, sync) || "尚无同步";
-    byId("syncProjectCount").textContent = `${toFiniteNumber(sync.workspaceCount, 0)} 个`;
-    byId("syncFileCount").textContent = `${toFiniteNumber(sync.snapshotCount, 0)} 个`;
-    byId("syncStorage").textContent = formatBytes(toFiniteNumber(sync.totalBytes, 0));
+    const devices = mergeCollectorDevices(state.usage);
+    byId("enabledProviderCount").textContent = devices.length ? `${devices.length} 台设备` : "等待采集器连接";
+    byId("latestUpdateTime").textContent = state.usage?.capturedAt ? formatDateTime(state.usage.capturedAt) : "尚无数据";
 
     const hubStatus = getHubStatus(state, providers);
     setBadge(byId("hubStatusBadge"), hubStatus);
     updateTopStatus(hubStatus.text === "正常" ? "Hub 正常运行" : `Hub ${hubStatus.text}`, hubStatus.topState);
 
-    renderJourney(devices, providers, bridge);
+    renderJourney(providers, bridge);
     renderCoreQuotaDock(providers);
     renderUsageHistory(state.usage);
-    renderSyncConsole(state.usage, sync);
+    renderDevices(state.usage);
     renderBridge(bridge, providers);
     renderProviders(providers);
   }
 
-  function renderJourney(devices, providers, bridge) {
+  function renderJourney(providers, bridge) {
     const codex = providers.find((provider) => provider.id.toLowerCase() === "codex");
     const codexConnected = Boolean(codex?.enabled && codex?.configured && !providerNeedsConnection(codex));
-    const pcConnected = devices.length > 0;
     const watchReady = codexConnected && bridge?.secretConfigured !== false;
-    setBadge(byId("journeyPcStatus"), pcConnected
-      ? { text: `${devices.length} 台已连接`, badgeClass: "badge-success", topState: "ok" }
-      : { text: "尚未连接", badgeClass: "badge-neutral", topState: "" });
     setBadge(byId("journeyCodexStatus"), codexConnected
       ? { text: "已授权", badgeClass: "badge-success", topState: "ok" }
       : { text: "等待授权", badgeClass: "badge-warning", topState: "busy" });
     byId("watchBridgeOverview").textContent = watchReady ? "可用" : "等待授权";
     setBadge(byId("cwCodexAuthStatus"), codexConnected
-      ? { text: "CW 已授权", badgeClass: "badge-success", topState: "ok" }
+      ? { text: "Hub 已授权", badgeClass: "badge-success", topState: "ok" }
       : { text: "需要独立授权", badgeClass: "badge-warning", topState: "busy" });
   }
 
@@ -586,11 +575,11 @@
           ? `旧版采集器离线 · 本地日志快照 · ${formatDateTime(usage.collectorLastSeenAt)}`
           : `${usage.deviceCount || 1} 台旧版采集器 · 本地日志（非账号总量） ${formatDateTime(usage.capturedAt)}`;
     byId("usageHistoryNote").textContent = !available
-      ? "当前没有 Token 基线；安装 PC Token 详情采集器后，CW 才能建立可连续估算的起点。"
+      ? "当前没有 Token 基线；安装 PC Token 详情采集器后，Hub 才能建立可连续估算的起点。"
       : usage.mode === "hybrid_estimate"
-        ? "离线增量根据 CW 直接读取的 Codex 额度百分比变化和最近在线校准率推算；采集器恢复后会自动以精确数据重新校准。"
+        ? "离线增量根据 Hub 直接读取的 Codex 额度百分比变化和最近在线校准率推算；采集器恢复后会自动以精确数据重新校准。"
         : usage.mode === "collector_baseline"
-          ? "CW 暂时无法从 Codex 额度窗口推算新增 Token，当前保留最后一次精确数据，不会把旧数据冒充实时值。"
+          ? "Hub 暂时无法从 Codex 额度窗口推算新增 Token，当前保留最后一次精确数据，不会把旧数据冒充实时值。"
           : "金额按各模型输入、缓存和输出 token 的 API 单价折算；没有可识别价格时按每百万 token 4 美元粗估。";
   }
 
@@ -607,12 +596,8 @@
     return emptyText;
   }
 
-  function mergeCollectorDevices(usage, sync) {
+  function mergeCollectorDevices(usage) {
     const values = new Map();
-    for (const item of Array.isArray(sync?.devices) ? sync.devices : []) {
-      if (!item?.id) continue;
-      values.set(item.id, { id: item.id, lastSeenAt: item.lastSeenAt || null, sources: ["Codex 插件"] });
-    }
     for (const item of Array.isArray(usage?.devices) ? usage.devices : []) {
       if (!item?.id) continue;
       const current = values.get(item.id) || { id: item.id, lastSeenAt: null, sources: [] };
@@ -624,21 +609,13 @@
     return [...values.values()].sort((left, right) => Date.parse(right.lastSeenAt || 0) - Date.parse(left.lastSeenAt || 0));
   }
 
-  function findLatestSyncActivity(usage, sync) {
-    const values = [usage?.capturedAt];
-    for (const workspace of Array.isArray(sync?.workspaces) ? sync.workspaces : []) values.push(workspace?.updatedAt);
-    for (const device of Array.isArray(sync?.devices) ? sync.devices : []) values.push(device?.lastSeenAt);
-    const timestamps = values.map((value) => Date.parse(value || "")).filter(Number.isFinite);
-    return timestamps.length ? formatDateTime(new Date(Math.max(...timestamps)).toISOString()) : "";
-  }
-
-  function renderSyncConsole(usage, sync) {
-    const devices = mergeCollectorDevices(usage, sync);
+  function renderDevices(usage) {
+    const devices = mergeCollectorDevices(usage);
     const deviceList = byId("deviceList");
     deviceList.replaceChildren();
     byId("deviceCountBadge").textContent = `${devices.length} 台`;
     if (!devices.length) {
-      const empty = document.createElement("p"); empty.className = "empty-metric"; empty.textContent = "等待 Codex 插件发布第一个开发快照"; deviceList.append(empty);
+      const empty = document.createElement("p"); empty.className = "empty-metric"; empty.textContent = "等待 Token 详情采集器上报"; deviceList.append(empty);
     }
     for (const device of devices) {
       const row = document.createElement("div"); row.className = "entity-row";
@@ -657,28 +634,10 @@
       row.append(mark, copy, actions); deviceList.append(row);
     }
 
-    const workspaces = Array.isArray(sync?.workspaces) ? sync.workspaces : [];
-    const workspaceList = byId("workspaceList"); workspaceList.replaceChildren();
-    byId("workspaceCountBadge").textContent = `${toFiniteNumber(sync?.workspaceCount, 0)} 个项目`;
-    if (!workspaces.length) {
-      const empty = document.createElement("p"); empty.className = "empty-metric"; empty.textContent = "还没有开发快照"; workspaceList.append(empty);
-    }
-    for (const workspace of workspaces.slice(0, 12)) {
-      const row = document.createElement("div"); row.className = "entity-row";
-      const mark = document.createElement("span"); mark.className = "entity-mark"; mark.textContent = "项";
-      const copy = document.createElement("div");
-      const displayName = workspace.name || workspace.id;
-      const title = document.createElement("strong"); title.textContent = displayName;
-      const identity = displayName === workspace.id ? "" : ` · ${workspace.id}`;
-      const meta = document.createElement("small"); meta.textContent = `${workspace.snapshotCount || 0} 个快照 · ${formatBytes(Number(workspace.totalBytes) || 0)}${identity}`;
-      copy.append(title, meta);
-      const time = document.createElement("span"); time.className = "entity-status"; time.textContent = workspace.updatedAt ? formatDateTime(workspace.updatedAt) : "等待数据";
-      row.append(mark, copy, time); workspaceList.append(row);
-    }
   }
 
   async function forgetDevice(deviceId, button) {
-    if (!window.confirm(`确定移除终端“${deviceId}”吗？\n\n这会清理该终端的连接、额度快照和活动记录，但不会删除 NAS 中已经同步的工作区文件。终端再次上报后会自动重新出现。`)) return;
+    if (!window.confirm(`确定移除终端“${deviceId}”吗？\n\n这会清理该终端的连接、额度快照和活动记录。终端再次上报后会自动重新出现。`)) return;
     setButtonBusy(button, true, "移除中");
     try {
       const response = await api(`/admin/api/devices/${encodeURIComponent(deviceId)}`, { method: "DELETE" });
@@ -688,7 +647,7 @@
       } else {
         await loadState();
       }
-      showToast(`已移除终端 ${deviceId}，工作区文件已保留`);
+      showToast(`已移除终端 ${deviceId}`);
     } catch (error) {
       if (error.isAuthError) {
         clearToken(); showLogin("管理会话已过期，请重新登录。", "error");
@@ -697,21 +656,6 @@
         setButtonBusy(button, false);
       }
     }
-  }
-
-  async function pollSyncProgress() {
-    if (syncPolling || !currentState || resolvePage() !== "sync") return;
-    syncPolling = true;
-    try {
-      const sync = await api("/admin/api/sync");
-      currentState.sync = sync && typeof sync === "object" ? sync : {};
-      renderSyncConsole(currentState.usage, currentState.sync);
-      byId("syncProjectCount").textContent = `${toFiniteNumber(currentState.sync.workspaceCount, 0)} 个`;
-      byId("syncFileCount").textContent = `${toFiniteNumber(currentState.sync.snapshotCount, 0)} 个`;
-      byId("syncStorage").textContent = formatBytes(toFiniteNumber(currentState.sync.totalBytes, 0));
-    } catch (error) {
-      if (error.isAuthError) { clearToken(); showLogin("管理会话已过期，请重新登录。", "error"); }
-    } finally { syncPolling = false; }
   }
 
   function formatTokenCount(value) {
@@ -733,16 +677,11 @@
     const endpoint = window.location.origin;
     byId("bridgeEndpoint").textContent = endpoint;
     byId("bridgeEndpoint").dataset.copyValue = endpoint;
-    byId("pcHubEndpoint").textContent = endpoint;
-    byId("pcHubEndpoint").dataset.copyValue = endpoint;
 
     const bridgeSecret = typeof bridge.secret === "string" ? bridge.secret : "";
     byId("bridgeSecret").textContent = bridgeSecret || "尚未生成";
     byId("bridgeSecret").dataset.copyValue = bridgeSecret;
     byId("copyBridgeSecretButton").disabled = !bridgeSecret;
-    byId("pcHubSecret").textContent = bridgeSecret || "尚未生成";
-    byId("pcHubSecret").dataset.copyValue = bridgeSecret;
-    byId("copyPcSecretButton").disabled = !bridgeSecret;
 
     const compatibleCount = providers.filter((provider) => provider.enabled && provider.bridgeCompatible === true).length;
     byId("bridgeProviderCount").textContent = `${compatibleCount} 个`;
@@ -1299,7 +1238,7 @@
         throw new Error("当前浏览器无法保存管理会话。");
       }
       await loadState({ initial: true });
-      showGlobalAlert("首次设置完成。请按开始页选择 PC 同步或 Codex 额度链路。", "success", 6000);
+      showGlobalAlert("首次设置完成。请连接 Codex 额度与手机桥接。", "success", 6000);
     } catch (error) {
       setFormMessage("setupMessage", error.message || "首次设置失败。", "error");
     } finally {
@@ -1316,14 +1255,14 @@
   }
 
   async function rotateBridgeSecret() {
-    if (!window.confirm("重新生成后，Codex 插件和手机里的旧连接 Key 都会立即失效。继续吗？")) return;
+    if (!window.confirm("重新生成后，Token 采集器和手机里的旧连接 Key 都会立即失效。继续吗？")) return;
     const button = byId("rotateBridgeSecretButton");
     setButtonBusy(button, true, "生成中");
     try {
       const state = await api("/admin/api/bridge/rotate", { method: "POST" });
       currentState = state;
       renderState(state);
-      showGlobalAlert("新的设备连接 Key 已生成，请同步更新 Codex 插件和手机 App。", "success", 5000);
+      showGlobalAlert("新的设备连接 Key 已生成，请同步更新 Token 采集器和手机 App。", "success", 5000);
     } catch (error) {
       if (error.isAuthError) {
         clearToken();
@@ -1812,12 +1751,6 @@
     byId("copyBridgeSecretButton").addEventListener("click", () => {
       writeClipboard(byId("bridgeSecret").dataset.copyValue || "", "设备连接 Key 已复制。");
     });
-    byId("copyPcEndpointButton").addEventListener("click", () => {
-      writeClipboard(byId("pcHubEndpoint").dataset.copyValue || byId("pcHubEndpoint").textContent, "CW 地址已复制。");
-    });
-    byId("copyPcSecretButton").addEventListener("click", () => {
-      writeClipboard(byId("pcHubSecret").dataset.copyValue || "", "设备连接 Key 已复制。");
-    });
     byId("rotateBridgeSecretButton").addEventListener("click", rotateBridgeSecret);
 
     document.querySelectorAll(".nav-link").forEach((link) => {
@@ -1825,13 +1758,12 @@
         if (link.hash === window.location.hash) renderPage({ scrollToTop: true });
       });
     });
-    window.addEventListener("hashchange", () => { renderPage({ scrollToTop: true }); void pollSyncProgress(); });
+    window.addEventListener("hashchange", () => { renderPage({ scrollToTop: true }); });
   }
 
   async function initialize() {
     applyTheme(getStoredTheme());
     bindEvents();
-    window.setInterval(() => { void pollSyncProgress(); }, 1500);
     try {
       const setup = await publicApi("/admin/api/setup");
       if (setup.setupRequired) {

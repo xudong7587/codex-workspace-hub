@@ -252,7 +252,7 @@ namespace CWUsageReporter {
                 HttpWebResponse response = error.Response as HttpWebResponse;
                 string detail = "";
                 if (response != null) using (StreamReader reader = new StreamReader(response.GetResponseStream(), Encoding.UTF8)) detail = reader.ReadToEnd();
-                throw new InvalidOperationException("CW 请求失败" + (response == null ? "" : " HTTP " + (int)response.StatusCode) + (String.IsNullOrWhiteSpace(detail) ? "" : "：" + Short(detail, 180)), error);
+                throw new InvalidOperationException("Hub 请求失败" + (response == null ? "" : " HTTP " + (int)response.StatusCode) + (String.IsNullOrWhiteSpace(detail) ? "" : "：" + Short(detail, 180)), error);
             }
         }
 

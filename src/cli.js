@@ -16,7 +16,6 @@ import { createCodexProvider } from "./providers/codex.js";
 import { createOpenRouterProvider } from "./providers/openrouter.js";
 import { SettingsStore, defaultRuntimeSettings } from "./settings-store.js";
 import { UsageStore } from "./usage-store.js";
-import { SnapshotStore } from "./snapshot-store.js";
 
 function line(stream, value = "") {
   stream.write(`${value}\n`);
@@ -113,7 +112,6 @@ export function createRuntime(config, options = {}) {
     defaults: defaultRuntimeSettings(config),
   });
   const usageStore = options.usageStore || new UsageStore({ dataDir: config.dataDir });
-  const snapshotStore = options.snapshotStore || new SnapshotStore({ dataDir: config.dataDir, logger });
   const codexProvider = options.codexProvider || createCodexProvider({
     clientFactory,
     timeoutMs: config.loginTimeoutMs,
@@ -133,7 +131,6 @@ export function createRuntime(config, options = {}) {
     clientFactory,
     settingsStore,
     usageStore,
-    snapshotStore,
     providerManager,
     quotaService: providerManager,
   };
@@ -153,7 +150,7 @@ export async function runServe(config, options = {}) {
   validateServeConfig(config);
   const credentialStore = await initializeCredentialStore(config, options);
   const runtimeOptions = { ...options, credentialStore };
-  const { logger, providerManager, usageStore, snapshotStore } = createRuntime(config, runtimeOptions);
+  const { logger, providerManager, usageStore } = createRuntime(config, runtimeOptions);
   await usageStore.initialize?.();
   await providerManager.initialize?.();
   const server = options.server || createGatewayServer({
@@ -161,12 +158,11 @@ export async function runServe(config, options = {}) {
     providerManager,
     credentialStore,
     usageStore,
-    snapshotStore,
     logger,
   });
   await startGatewayServer(server, config);
   const address = server.address();
-  logger.info("Codex Workspace Hub listening", {
+  logger.info("vivo-watch-hub listening", {
     host: typeof address === "object" && address ? address.address : config.host,
     port: typeof address === "object" && address ? address.port : config.port,
   });
@@ -198,7 +194,7 @@ export async function runServe(config, options = {}) {
 
   try {
     const signal = await shutdown;
-    logger.info("Shutting down Codex Workspace Hub", { signal });
+    logger.info("Shutting down vivo-watch-hub", { signal });
   } finally {
     await closeGatewayServer(server).catch((error) => {
       logger.warn("HTTP server shutdown failed", { error: error.message });
@@ -261,7 +257,7 @@ export async function runStatus(config, options = {}) {
 function printHelp(stream) {
   line(stream, "Usage: node src/cli.js <serve|login|status>");
   line(stream, "");
-  line(stream, "  serve   Start Codex Workspace Hub");
+  line(stream, "  serve   Start vivo-watch-hub");
   line(stream, "  login   Sign in to Codex using a device code");
   line(stream, "  status  Refresh and print the current Hub status");
 }

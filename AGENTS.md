@@ -1,9 +1,9 @@
-# Codex Workspace Hub contributor notes
+# vivo-watch-hub contributor notes
 
 ## Project position
 
-- CW is a private NAS hub for reviewed Codex development snapshots, quota display, and mobile/watch bridging.
-- Project sync is plugin-driven. The retired Windows project collector must not be restored.
+- NAS hub for AI quota, Token usage, and mobile/watch bridging.
+- PC project synchronization has been removed. Do not restore snapshot APIs or development-sync plugins.
 - The Windows usage reporter is token-only and must never gain project or conversation upload behavior.
 
 ## Commands
@@ -14,29 +14,19 @@
 - Local server: `npm start`
 - Docker: `docker compose up -d`
 
-## Stack and boundaries
+## Boundaries
 
 - Runtime: Node.js 20+, ES modules, no web framework.
-- Server code: `src/`; admin UI: `public/`; tests: `test/`.
-- Codex plugin: `plugin/cw-development-sync/`.
+- Server: `src/`; admin UI: `public/`; tests: `test/`.
 - Token-only Windows reporter: `usage-reporter-windows/`.
-- Protocol reference: `docs/protocol.md`.
-- Runtime state belongs in `.hub-data/`, `/data`, or `cw-snapshots/`; never commit it.
-
-## Current product truth
-
-- Current release line is v1.0.x.
-- CW Docker stores encrypted snapshot payloads and metadata; selection and encryption happen on the PC.
-- Publishing and applying snapshots require a reviewed preview and user confirmation.
-- Mobile/watch quota data and PC project sync are independent paths.
+- Protocol: `docs/protocol.md`.
+- Keep existing encryption contexts, account identity hashes, client asset names and configuration paths compatible.
+- Runtime state belongs in `.hub-data/` or `/data`; never commit it.
 
 ## Safety and release
 
 - Preserve unrelated dirty worktree changes.
-- Never delete local PC projects or NAS data as part of normal development or testing.
-- Do not operate a user's NAS, push Git, publish Docker tags, or create a GitHub Release without explicit confirmation.
+- Never delete local PC projects, historical NAS snapshots or NAS data during development or testing.
+- When the user requests code changes in this repository, committing and pushing those changes to GitHub is authorized, including pushing to main after required checks pass. Do not force-push or delete branches unless explicitly requested.
+- Operating the user's NAS, publishing release tags, or creating a GitHub Release requires explicit user authorization.
 - Before release, run syntax checks and the full test suite, then verify README and protocol docs match behavior.
-
-## Next step
-
-- Improve reliability through small-project tests before broad snapshot transfers.

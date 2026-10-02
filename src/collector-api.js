@@ -53,8 +53,6 @@ export function createCollectorApi(options = {}) {
           protocolVersion: 1,
           usage: Boolean(usageStore?.ingest),
           sync: false,
-          deprecated: true,
-          replacement: "/api/cw/v1/snapshots/status",
         });
       }
 

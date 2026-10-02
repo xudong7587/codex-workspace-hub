@@ -51,7 +51,7 @@ function createManager(overrides = {}) {
     calls,
     loginManager,
     getAdminState() {
-      return { productName: "Codex Workspace Hub", settings: {} };
+      return { productName: "vivo-watch-hub", settings: {} };
     },
     async updateSettings(body) {
       calls.push(["settings", structuredClone(body)]);
@@ -99,7 +99,7 @@ test("admin API requires the dedicated Bearer token", async () => {
     "/admin/api/state",
   );
   assert.equal(accepted.statusCode, 200);
-  assert.equal(accepted.payload.productName, "Codex Workspace Hub");
+  assert.equal(accepted.payload.productName, "vivo-watch-hub");
 });
 
 test("panel setup creates a session and manages the generated bridge secret", async () => {
@@ -279,32 +279,27 @@ test("usage history import is authenticated and returned with admin state", asyn
   assert.equal(stored.usdCnyRate, 7.2);
 });
 
-test("admin can forget a terminal without deleting workspace storage", async () => {
+test("admin can forget a token reporter device", async () => {
   const calls = [];
   const usageStore = {
     get: () => ({ deviceCount: 0, devices: [] }),
     async forgetDevice(deviceId) { calls.push(["usage", deviceId]); return { removed: true }; },
   };
-  const snapshotStore = {
-    getSummary: async () => ({ workspaceCount: 1, devices: [], workspaces: [{ id: "keep-project" }] }),
-    async forgetDevice(deviceId) { calls.push(["sync", deviceId]); return { detachedFiles: 3 }; },
-  };
-  const handle = createAdminApi({ providerManager: createManager(), adminToken: ADMIN_TOKEN, usageStore, snapshotStore });
+  const handle = createAdminApi({ providerManager: createManager(), adminToken: ADMIN_TOKEN, usageStore });
   const response = await handle(request({ method: "DELETE", token: ADMIN_TOKEN }), "/admin/api/devices/old-terminal");
 
   assert.equal(response.statusCode, 200);
   assert.equal(response.payload.ok, true);
-  assert.deepEqual(calls, [["usage", "old-terminal"], ["sync", "old-terminal"]]);
-  assert.equal(response.payload.state.sync.workspaceCount, 1);
+  assert.deepEqual(calls, [["usage", "old-terminal"]]);
+  assert.equal("sync" in response.payload.state, false);
 });
 
-test("admin diagnostics returns bounded logs and sync integrity without exposing credentials", async () => {
+test("admin diagnostics returns bounded logs without retired project state", async () => {
   const logger = { recent: (limit) => [{ level: "info", message: "sync", limit }] };
-  const snapshotStore = { getDiagnostics: async () => ({ ok: true, missingObjects: [] }) };
-  const handle = createAdminApi({ providerManager: createManager(), adminToken: ADMIN_TOKEN, logger, snapshotStore });
+  const handle = createAdminApi({ providerManager: createManager(), adminToken: ADMIN_TOKEN, logger });
   const response = await handle(request({ token: ADMIN_TOKEN, url: "/admin/api/diagnostics?limit=12" }), "/admin/api/diagnostics");
   assert.equal(response.statusCode, 200);
-  assert.equal(response.payload.sync.ok, true);
+  assert.equal("sync" in response.payload, false);
   assert.equal(response.payload.logs[0].limit, 12);
   assert.equal(typeof response.payload.version, "string");
   assert.equal(response.payload.process.memory.rss > 0, true);
@@ -403,4 +398,10 @@ test("a delayed delete cannot cancel a newer Codex login session", async () => {
   );
   assert.equal(matchingDelete.statusCode, 200);
   assert.equal(matchingDelete.payload.status, "cancelled");
+});
+
+test("retired admin sync endpoint is absent", async () => {
+  const handle = createAdminApi({ providerManager: createManager(), adminToken: ADMIN_TOKEN });
+  const response = await handle(request({ token: ADMIN_TOKEN }), "/admin/api/sync");
+  assert.equal(response.statusCode, 404);
 });

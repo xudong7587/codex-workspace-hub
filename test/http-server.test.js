@@ -87,9 +87,10 @@ test("admin shell is served with strict browser security headers", async () => {
     assert.match(response.headers.get("content-security-policy"), /frame-ancestors 'none'/);
     assert.equal(response.headers.get("x-frame-options"), "DENY");
     const body = await response.text();
-    assert.match(body, /Codex Workspace Hub/);
+    assert.match(body, /vivo-watch-hub/);
     assert.match(body, /id="coreQuotaDock"/);
-    assert.match(body, /href="https:\/\/github\.com\/xudong7587\/codex-workspace-hub\/releases\/latest"/);
+    assert.doesNotMatch(body, /PC 项目同步|data-page="sync"|开发快照/);
+    assert.match(body, /href="https:\/\/github\.com\/xudong7587\/vivo-watch-hub\/releases\/latest"/);
     assert.doesNotMatch(body, /mobile-download-button" href="\/admin\/downloads\//);
   });
 });

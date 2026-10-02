@@ -29,7 +29,7 @@ namespace CWUsageReporter {
         public ReporterConfig Value { get; private set; }
 
         public SettingsForm(ReporterConfig config, string status, DateTime? lastSuccess, UsageOverview usage) {
-            original = config; Text = "CW Token 详情采集器";
+            original = config; Text = "vivo-watch-hub Token 详情采集器";
             Icon = Program.AppIcon;
             StartPosition = FormStartPosition.CenterScreen; MinimumSize = new Size(950, 750); ClientSize = new Size(1060, 780);
             BackColor = Theme.Background; ForeColor = Theme.Text; Font = FontOf(16F, FontStyle.Regular);
@@ -56,7 +56,7 @@ namespace CWUsageReporter {
             heading.Controls.Add(new PictureBox { Dock = DockStyle.Fill, Margin = new Padding(0, 8, 18, 28), SizeMode = PictureBoxSizeMode.Zoom, Image = Program.AppBitmap }, 0, 0);
             TableLayoutPanel copy = new TableLayoutPanel { Dock = DockStyle.Fill, BackColor = Theme.Background, ColumnCount = 1, RowCount = 4, Margin = new Padding(0) };
             copy.RowStyles.Add(new RowStyle(SizeType.Absolute, 20)); copy.RowStyles.Add(new RowStyle(SizeType.Absolute, 40)); copy.RowStyles.Add(new RowStyle(SizeType.Absolute, 27)); copy.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            copy.Controls.Add(LabelOf("CW  /  TOKEN REPORTER  ·  v" + ReporterConfig.AppVersion, 14F, FontStyle.Bold, Theme.Accent), 0, 0);
+            copy.Controls.Add(LabelOf("VIVO WATCH HUB / TOKEN REPORTER  ·  v" + ReporterConfig.AppVersion, 14F, FontStyle.Bold, Theme.Accent), 0, 0);
             copy.Controls.Add(LabelOf("Token 用量采集器", 30F, FontStyle.Bold, Theme.Text), 0, 1);
             copy.Controls.Add(LabelOf("安静地汇总 Codex 用量；不读取提示词、回答或项目文件。", 15F, FontStyle.Regular, Theme.TextSoft), 0, 2);
             heading.Controls.Add(copy, 1, 0); return heading;
@@ -103,7 +103,7 @@ namespace CWUsageReporter {
             TableLayoutPanel fields = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 4, BackColor = Theme.Background, Margin = new Padding(0) };
             fields.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50)); fields.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
             fields.RowStyles.Add(new RowStyle(SizeType.Absolute, 62)); fields.RowStyles.Add(new RowStyle(SizeType.Absolute, 62)); fields.RowStyles.Add(new RowStyle(SizeType.Absolute, 62)); fields.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            AddField(fields, "CW HTTPS 地址", hubUrl, 0, 0, 2); AddField(fields, "设备连接 Key", key, 0, 1, 1); AddField(fields, "设备名称", device, 1, 1, 1);
+            AddField(fields, "Hub HTTPS 地址", hubUrl, 0, 0, 2); AddField(fields, "设备连接 Key", key, 0, 1, 1); AddField(fields, "设备名称", device, 1, 1, 1);
             AddField(fields, "上报间隔（分钟）", interval, 0, 2, 1); AddField(fields, "美元兑人民币", rate, 1, 2, 1);
             TableLayoutPanel foot = new TableLayoutPanel { Dock = DockStyle.Fill, BackColor = Theme.Background, ColumnCount = 1, RowCount = 2, Margin = new Padding(0) };
             foot.RowStyles.Add(new RowStyle(SizeType.Absolute, 38)); foot.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
@@ -123,7 +123,7 @@ namespace CWUsageReporter {
 
         private void Save(object sender, EventArgs e) {
             string url = hubUrl.Text.Trim().TrimEnd('/'); Uri uri;
-            if (!Uri.TryCreate(url, UriKind.Absolute, out uri) || uri.Scheme != Uri.UriSchemeHttps) { message.Text = "请输入有效的 HTTPS CW 地址。"; return; }
+            if (!Uri.TryCreate(url, UriKind.Absolute, out uri) || uri.Scheme != Uri.UriSchemeHttps) { message.Text = "请输入有效的 HTTPS Hub 地址。"; return; }
             string id = ReporterConfig.Slug(device.Text); string nextKey = key.Text == "••••••••••••" ? original.Key : key.Text.Trim();
             if (String.IsNullOrWhiteSpace(nextKey)) { message.Text = "请输入设备连接 Key。"; return; }
             ReporterConfig value = new ReporterConfig { HubUrl = url, DeviceId = id, IntervalMinutes = (int)interval.Value, UsdCnyRate = (double)rate.Value, StartWithWindows = startup.Checked };

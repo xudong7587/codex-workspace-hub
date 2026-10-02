@@ -383,7 +383,7 @@ export class ProviderManager {
       });
     }
     return {
-      productName: "Codex Workspace Hub",
+      productName: "vivo-watch-hub",
       version: APP_VERSION,
       settings: {
         pollIntervalSeconds: this.settings.pollIntervalSeconds,

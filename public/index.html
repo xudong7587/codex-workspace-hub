@@ -8,7 +8,7 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
     >
-    <title>Codex Workspace Hub</title>
+    <title>vivo-watch-hub</title>
     <link rel="stylesheet" href="/admin/app.css">
     <script src="/admin/app.js" defer></script>
   </head>
@@ -19,17 +19,17 @@
       <div class="noscript-message">管理面板需要 JavaScript 才能运行。</div>
     </noscript>
 
-    <main class="login-view" id="loginView" aria-label="Codex Workspace Hub 管理入口">
+    <main class="login-view" id="loginView" aria-label="vivo-watch-hub 管理入口">
       <section class="login-panel">
-        <div class="brand-lockup" aria-label="Codex Workspace Hub">
-          <span class="brand-mark" aria-hidden="true">CW</span>
-          <span>Codex Workspace Hub</span>
+        <div class="brand-lockup" aria-label="vivo-watch-hub">
+          <span class="brand-mark" aria-hidden="true">VW</span>
+          <span>vivo-watch-hub</span>
         </div>
         <div id="setupContent" hidden>
           <div class="login-copy">
             <p class="eyebrow">首次设置</p>
             <h1 id="loginTitle">创建管理密码</h1>
-            <p>只需设置一次。CW 会自动生成供 Codex 插件和手机桥接使用的设备连接 Key。</p>
+            <p>只需设置一次。Hub 会自动生成供 Token 采集器和手机桥接使用的设备连接 Key。</p>
           </div>
           <form id="setupForm" class="stack-form" novalidate>
             <div class="field">
@@ -47,7 +47,7 @@
         <div id="loginContent" hidden>
           <div class="login-copy">
             <p class="eyebrow">本地管理</p>
-            <h1>登录同步中心</h1>
+            <h1>登录额度中心</h1>
             <p>输入首次设置的管理密码。登录会话只保存在当前浏览器标签页。</p>
           </div>
           <form id="loginForm" class="stack-form" novalidate>
@@ -66,11 +66,11 @@
     <div class="app-shell" id="appView" hidden>
       <header class="shell-header">
         <div class="header-inner">
-          <a class="sidebar-brand" href="#overview" aria-label="Codex Workspace Hub 首页">
-            <span class="brand-mark" aria-hidden="true">CW</span>
+          <a class="sidebar-brand" href="#overview" aria-label="vivo-watch-hub 首页">
+            <span class="brand-mark" aria-hidden="true">VW</span>
             <span class="brand-copy">
-              <strong class="brand-name">Codex Workspace Hub</strong>
-              <small>多设备项目、对话与额度同步中心 · <span id="appVersion">读取版本</span></small>
+              <strong class="brand-name">vivo-watch-hub</strong>
+              <small>手机、手表与额度数据中心 · <span id="appVersion">读取版本</span></small>
             </span>
           </a>
 
@@ -93,7 +93,6 @@
       <div class="shell-main">
         <nav class="sidebar-nav" aria-label="主导航">
           <a class="nav-link is-active" href="#overview" data-page-link="overview">总览</a>
-          <a class="nav-link" href="#sync" data-page-link="sync">PC 项目同步</a>
           <a class="nav-link" href="#quota" data-page-link="quota">移动端数据中心</a>
         </nav>
 
@@ -121,31 +120,14 @@
             <section class="page-section" id="overview" data-page="overview" aria-labelledby="overviewTitle">
               <div class="page-heading overview-heading">
                 <div>
-                  <p class="eyebrow">Codex Workspace Hub</p>
-                  <h1 id="overviewTitle">两条链路，各自清晰运行</h1>
-                  <p>PC 项目同步只处理开发快照；手机、手表和额度集中在移动端数据中心，互不干扰。</p>
+                  <p class="eyebrow">vivo-watch-hub</p>
+                  <h1 id="overviewTitle">手机、手表与额度，一处掌握</h1>
+                  <p>集中查看 AI 剩余额度与 Token 用量，并连接手机和兼容的 vivo 手表。</p>
                 </div>
                 <span class="badge badge-neutral" id="hubStatusBadge">读取中</span>
               </div>
 
               <div class="domain-grid">
-                <article class="domain-panel surface domain-panel-sync">
-                  <div class="domain-panel-heading">
-                    <div>
-                      <span class="domain-label">PC 开发</span>
-                      <h2>项目同步</h2>
-                    </div>
-                    <span class="badge badge-neutral" id="journeyPcStatus">等待插件</span>
-                  </div>
-                  <p>Codex 在任务中选择变更，确认后才把加密开发快照写入 NAS。</p>
-                  <dl class="domain-metrics">
-                    <div><dt>项目</dt><dd id="syncProjectCount">0</dd></div>
-                    <div><dt>快照</dt><dd id="syncFileCount">0</dd></div>
-                    <div><dt>密文存储</dt><dd id="syncStorage">0 B</dd></div>
-                  </dl>
-                  <a class="domain-link" href="#sync">管理项目同步 <span aria-hidden="true">→</span></a>
-                </article>
-
                 <article class="domain-panel surface domain-panel-quota">
                   <div class="domain-panel-heading">
                     <div>
@@ -154,7 +136,7 @@
                     </div>
                     <span class="badge badge-neutral" id="journeyCodexStatus">等待授权</span>
                   </div>
-                  <p>手机 APK 连接 CW，再把额度送到支持的 vivo 手表；Token 详情仍由独立轻量采集器上报。</p>
+                  <p>手机 APK 连接 Hub，再把额度送到支持的 vivo 手表；Token 详情仍由独立轻量采集器上报。</p>
                   <dl class="domain-metrics">
                     <div><dt>连接器</dt><dd id="providerCount">0</dd></div>
                     <div><dt>刷新间隔</dt><dd id="hubPollInterval">5 分钟</dd></div>
@@ -173,67 +155,18 @@
               </section>
             </section>
 
-            <section class="page-section" id="workspaces" data-page="sync" aria-labelledby="workspacesTitle">
-              <div class="section-heading">
-                <div>
-                  <p class="eyebrow">PC 项目同步</p>
-                  <h2 id="workspacesTitle">开发进度，由 Codex 按项目发布</h2>
-                </div>
-                <p>连接 CW 只建立安全通道，不扫描电脑，也不会自动上传全部项目。进入具体项目后，由 Codex 预览并发布所需变化。</p>
-              </div>
-              <div class="sync-console-grid">
-                <article class="surface sync-console-card">
-                  <div class="surface-heading"><div><p class="section-kicker">Devices</p><h3>连接设备</h3></div><span class="badge badge-neutral" id="deviceCountBadge">0 台</span></div>
-                  <div class="entity-list" id="deviceList"><p class="empty-metric">等待 Codex 插件发布第一个开发快照</p></div>
-                  <p class="surface-note">移除终端只会清理连接、额度快照与活动记录，不会删除 NAS 中已同步的工作区文件。</p>
-                </article>
-                <article class="surface sync-console-card">
-                  <div class="surface-heading"><div><p class="section-kicker">Projects</p><h3>同步工作区</h3></div><span class="badge badge-neutral" id="workspaceCountBadge">0 个</span></div>
-                  <div class="entity-list" id="workspaceList"><p class="empty-metric">还没有项目数据</p></div>
-                </article>
-              </div>
-              <div class="pc-setup surface">
-                <div class="pc-setup-copy">
-                  <p class="section-kicker">Connect this PC</p>
-                  <h3>在新电脑上连接 CW</h3>
-                  <p>安装 CW Development Sync 插件并运行本机配置脚本。地址与 Key 仅用于连接，不代表选择了任何项目。</p>
-                  <a class="button button-primary" href="https://github.com/xudong7587/codex-workspace-hub">查看安装说明</a>
-                </div>
-                <dl class="connection-credentials">
-                  <div><dt>CW HTTPS 地址</dt><dd><code id="pcHubEndpoint">读取中</code></dd></div>
-                  <div><dt>设备连接 Key</dt><dd><code id="pcHubSecret">读取中</code></dd></div>
-                  <div class="button-row align-start">
-                    <button class="button button-quiet button-small" id="copyPcEndpointButton" type="button">复制地址</button>
-                    <button class="button button-quiet button-small" id="copyPcSecretButton" type="button">复制 Key</button>
-                  </div>
-                  <p>Key 在 Windows 中使用 DPAPI 加密保存。工具链、依赖、缓存、构建产物、.env 和密钥不会进入开发快照。</p>
-                </dl>
-              </div>
-            </section>
-
-            <section class="page-section page-subsection" id="sync-strategy" data-page="sync" aria-labelledby="syncStrategyTitle">
-              <div class="section-heading">
-                <div>
-                  <p class="eyebrow">一次发布的完整路径</p>
-                  <h2 id="syncStrategyTitle">判断、确认、传输、恢复</h2>
-                </div>
-                <p>Hub 不下发后台扫描任务，只负责快照版本、加密包中转和并发保护；文件选择由当前 Codex 开发任务完成。</p>
-              </div>
-              <div class="strategy-steps strategy-flow">
-                <article class="strategy-card"><span>01</span><div><h3>识别 Git 变化</h3><p>只查看 staged、unstaged 和未跟踪文件。</p></div></article>
-                <article class="strategy-card"><span>02</span><div><h3>执行安全过滤</h3><p>排除密钥、依赖、工具链、缓存和构建输出。</p></div></article>
-                <article class="strategy-card"><span>03</span><div><h3>确认开发快照</h3><p>Codex 列出准确路径，确认后才加密上传。</p></div></article>
-                <article class="strategy-card"><span>04</span><div><h3>在另一台电脑恢复</h3><p>先预览再应用；冲突保留副本，删除进入恢复目录。</p></div></article>
-              </div>
+            <section class="page-section" id="devices" data-page="quota" aria-labelledby="devicesTitle">
+              <div class="section-heading"><div><p class="eyebrow">Token 详情采集器</p><h2 id="devicesTitle">连接设备</h2></div><span class="badge badge-neutral" id="deviceCountBadge">0 台</span></div>
+              <div class="surface"><div class="entity-list" id="deviceList"><p class="empty-metric">等待 Token 详情采集器上报</p></div><p class="surface-note">移除设备只清理该设备的用量记录，再次上报后会自动出现。</p></div>
             </section>
 
             <section class="page-section" id="settings" data-page="quota" aria-labelledby="settingsTitle">
               <div class="section-heading">
                 <div>
-                  <p class="eyebrow">自动刷新 · CW 独立调度</p>
-                  <h2 id="settingsTitle">控制 CW 读取额度的频率</h2>
+                  <p class="eyebrow">自动刷新 · Hub 独立调度</p>
+                  <h2 id="settingsTitle">控制 Hub 读取额度的频率</h2>
                 </div>
-                <p>这里只控制 Hub 读取 AI 额度的频率，与各台 PC 的项目同步策略互不影响。</p>
+                <p>设置 Hub 读取 AI 额度的频率与自动刷新时段。</p>
               </div>
               <form class="surface settings-form" id="settingsForm" novalidate>
                 <div class="form-grid">
@@ -274,15 +207,15 @@
             <section class="page-section" id="providers" data-page="quota" aria-labelledby="providersTitle">
               <div class="section-heading">
                 <div>
-                  <p class="eyebrow">额度源 · CW 独立授权</p>
-                  <h2 id="providersTitle">让 CW 自己读取 Codex 剩余额度</h2>
+                  <p class="eyebrow">额度源 · Hub 独立授权</p>
+                  <h2 id="providersTitle">让 Hub 自己读取 Codex 剩余额度</h2>
                 </div>
-                <p>项目同步插件不会传递 Codex 登录。要让 CW 脱离 PC 服务手机和手表，请在这里单独完成设备码授权。</p>
+                <p>在这里完成设备码授权后，Hub 可独立为手机和手表刷新剩余额度。</p>
               </div>
 
               <aside class="auth-boundary surface">
                 <div class="auth-boundary-mark">!</div>
-                <div><strong>为什么要再登录一次？</strong><p>PC 上的 Codex 登录凭证只属于那台电脑。CW 采用自己的设备码授权，并把凭证加密保存在 Docker 数据卷中；因此所有 PC 关机后，CW 仍能刷新剩余额度。</p></div>
+                <div><strong>为什么要再登录一次？</strong><p>PC 上的 Codex 登录凭证只属于那台电脑。Hub 采用自己的设备码授权，并把凭证加密保存在 Docker 数据卷中；因此所有 PC 关机后，Hub 仍能刷新剩余额度。</p></div>
                 <span class="badge badge-neutral" id="cwCodexAuthStatus">等待检查</span>
               </aside>
 
@@ -414,22 +347,22 @@
               <div class="section-heading">
                 <div>
                   <p class="eyebrow">移动端数据中心</p>
-                  <h2 id="bridgeTitle">先把手机连接到 CW</h2>
+                  <h2 id="bridgeTitle">先把手机连接到 Hub</h2>
                 </div>
-                <p>手机是额度数据的移动入口。安装“额度桥接”后填入本页地址与 Key，即可读取 CW，并继续推送到兼容手表。</p>
+                <p>手机是额度数据的移动入口。安装“额度桥接”后填入本页地址与 Key，即可读取 Hub，并继续推送到兼容手表。</p>
               </div>
               <div class="mobile-hub-grid">
                 <article class="surface mobile-download-card">
-                  <div class="mobile-app-mark" aria-hidden="true">CW</div>
+                  <div class="mobile-app-mark" aria-hidden="true">VW</div>
                   <div class="mobile-download-copy">
                     <p class="section-kicker">Android companion</p>
                     <h3>额度桥接</h3>
-                    <p>Codex 可在 CW Hub 与设备码手机直连之间二选一，宠物卡片会自动跟随当前渠道。请从 GitHub 最新 Release 获取安装包。</p>
+                    <p>Codex 可在 Hub Hub 与设备码手机直连之间二选一，宠物卡片会自动跟随当前渠道。请从 GitHub 最新 Release 获取安装包。</p>
                     <div class="mobile-version-row">
                       <span class="badge badge-success">Android APK</span>
                       <span>约 1.8 MB</span>
                     </div>
-                    <a class="button button-primary mobile-download-button" href="https://github.com/xudong7587/codex-workspace-hub/releases/latest" target="_blank" rel="noopener noreferrer">前往 GitHub 下载最新版</a>
+                    <a class="button button-primary mobile-download-button" href="https://github.com/xudong7587/vivo-watch-hub/releases/latest" target="_blank" rel="noopener noreferrer">前往 GitHub 下载最新版</a>
                     <small>始终跳转到最新 Release，请在 Assets 中选择 CWQuotaBridge Android APK。</small>
                   </div>
                 </article>
@@ -440,12 +373,12 @@
                     <span class="badge badge-neutral" id="bridgeStatusBadge">读取中</span>
                   </div>
                   <dl class="detail-list bridge-detail-list">
-                    <div><dt>CW HTTPS 地址</dt><dd class="endpoint-value" id="bridgeEndpoint">/api/stats</dd></div>
+                    <div><dt>Hub HTTPS 地址</dt><dd class="endpoint-value" id="bridgeEndpoint">/api/stats</dd></div>
                     <div><dt>设备连接 Key</dt><dd class="endpoint-value"><code id="bridgeSecret">读取中</code></dd></div>
                     <div><dt>可发送到手表的额度源</dt><dd id="bridgeProviderCount">0</dd></div>
                   </dl>
                   <div class="button-row align-start">
-                    <button class="button button-quiet button-small" id="copyEndpointButton" type="button">复制 CW 地址</button>
+                    <button class="button button-quiet button-small" id="copyEndpointButton" type="button">复制 Hub 地址</button>
                     <button class="button button-quiet button-small" id="copyBridgeSecretButton" type="button">复制连接 Key</button>
                     <button class="button button-quiet button-small button-danger-text" id="rotateBridgeSecretButton" type="button">重新生成 Key</button>
                   </div>
@@ -456,7 +389,7 @@
               <div class="watch-flow surface" aria-label="移动端连接步骤">
                 <div><span>1</span><strong>安装手机 APK</strong><small>下载额度桥接并允许蓝牙连接。</small></div>
                 <i aria-hidden="true">→</i>
-                <div><span>2</span><strong>连接 CW</strong><small>填写上方 HTTPS 地址与设备 Key。</small></div>
+                <div><span>2</span><strong>连接 Hub</strong><small>填写上方 HTTPS 地址与设备 Key。</small></div>
                 <i aria-hidden="true">→</i>
                 <div><span>3</span><strong>选择额度表盘</strong><small>通过现有蓝牙健康通道接收数据。</small></div>
               </div>
@@ -474,7 +407,7 @@
                   <a href="https://www.vivo.com.cn/vivo/iqoowatchgt2/" target="_blank" rel="noopener noreferrer"><strong>iQOO WATCH GT 2</strong><span>同平台机型 · 官方资料</span></a>
                 </div>
                 <div class="ecosystem-history">
-                  <div><span>早期兼容链路</span><strong>VWatch / Token Monitor</strong><p>额度桥接 APK 最初按 Token Monitor 的 Hub 协议读取数据，CW 继续兼容这套接口。</p></div>
+                  <div><span>早期兼容链路</span><strong>VWatch / Token Monitor</strong><p>额度桥接 APK 最初按 Token Monitor 的 Hub 协议读取数据，Hub 继续兼容这套接口。</p></div>
                   <div><span>当前第三方入口</span><strong><a href="https://orbitv.top/" target="_blank" rel="noopener noreferrer">OrbitV</a> · <a href="https://qingwear.top/" target="_blank" rel="noopener noreferrer">轻腕市场</a></strong><p>OrbitV 可向兼容的 vivo 手表发送 .rpk 应用与表盘，内置轻腕社区资源入口。</p></div>
                   <div><span>额度表盘名称</span><strong>Clawd_on_Vwatch</strong><p>安装该表盘后，手机额度桥接会沿既有蓝牙通道更新 Codex 等额度信息。</p></div>
                 </div>
@@ -522,11 +455,11 @@
                   <small id="usageTotalValue">API 等价价值 —</small>
                 </div>
               </div>
-              <p class="usage-history-note" id="usageHistoryNote">安装 PC Token 详情采集器后，CW 会按设备去重汇总，并按模型输入、缓存和输出 token 的 API 单价估算价值。</p>
+              <p class="usage-history-note" id="usageHistoryNote">安装 PC Token 详情采集器后，Hub 会按设备去重汇总，并按模型输入、缓存和输出 token 的 API 单价估算价值。</p>
             </section>
             <div class="quota-list-heading">
               <span>实时剩余额度</span>
-              <small>由 CW 独立刷新</small>
+              <small>由 Hub 独立刷新</small>
             </div>
             <div class="core-quota-list" id="coreQuotaList"></div>
           </aside>
